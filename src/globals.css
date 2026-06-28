@@ -21,8 +21,10 @@ html, body {
 
 body:has(.liquid-panel-material),
 body:has(.liquid-panel-material) #root {
-  width: 320px;
-  overflow: hidden;
+  width: 344px;
+  overflow: visible;
+  padding: 12px;
+  background: transparent;
 }
 
 .liquid-panel-material::before {

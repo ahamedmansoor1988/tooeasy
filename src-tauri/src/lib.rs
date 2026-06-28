@@ -13,8 +13,8 @@ use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
 };
 
-const PANEL_WIDTH: f64 = 320.0;
-const PANEL_HEIGHT: f64 = 360.0;
+const PANEL_WIDTH: f64 = 344.0;
+const PANEL_HEIGHT: f64 = 384.0;
 const PANEL_MIN_HEIGHT: f64 = PANEL_HEIGHT;
 const PANEL_THUMBNAIL_ROW_HEIGHT: f64 = 92.0;
 
