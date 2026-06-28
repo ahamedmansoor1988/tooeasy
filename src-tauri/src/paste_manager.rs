@@ -6,8 +6,7 @@ pub fn paste_to_app(data_url: &str, bundle_id: &str) -> Result<(), String> {
     write_png_to_pasteboard(data_url)?;
 
     if !bundle_id.is_empty() {
-        let _ = Command::new("open").args(["-b", bundle_id]).status();
-        std::thread::sleep(Duration::from_millis(400));
+        activate_app(bundle_id);
     }
 
     send_cmd_v()
@@ -33,8 +32,7 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
 
     // Focus the target app once
     if !bundle_id.is_empty() {
-        let _ = Command::new("open").args(["-b", bundle_id]).status();
-        std::thread::sleep(Duration::from_millis(450));
+        activate_app(bundle_id);
     }
 
     let is_figma = bundle_id.contains("figma");
@@ -113,6 +111,15 @@ end tell
         .status()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn activate_app(bundle_id: &str) {
+    let script = format!(
+        r#"tell application id "{}" to activate"#,
+        bundle_id
+    );
+    let _ = Command::new("osascript").args(["-e", &script]).status();
+    std::thread::sleep(Duration::from_millis(120));
 }
 
 fn send_escape() -> Result<(), String> {

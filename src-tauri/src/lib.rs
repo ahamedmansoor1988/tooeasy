@@ -198,6 +198,7 @@ fn show_panel(app: AppHandle) {
     if let Some(panel) = app.get_webview_window("panel") {
         fit_panel_window(&app);
         let _ = panel.show();
+        let _ = panel.set_focus();
     } else {
         create_panel_window(&app);
     }
