@@ -384,8 +384,6 @@ export default function FloatingPanel({ event }: Props) {
 // ── AI Brand Logos (bundled local assets) ────────────────────────────────────
 import claudeLogoUrl from "../assets/logos/claude.svg";
 import chatgptLogoUrl from "../assets/logos/chatgpt.svg";
-import figmaLogoUrl from "../assets/logos/figma.svg";
-import tooeasyIconUrl from "../assets/logos/tooeasy-icon.svg";
 import tooeasyWordmarkUrl from "../assets/logos/tooeasy-wordmark.svg";
 
 function ClaudeLogo()  { return <LogoImg src={claudeLogoUrl}  alt="Claude" />; }
