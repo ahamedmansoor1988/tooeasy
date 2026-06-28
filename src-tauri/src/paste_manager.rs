@@ -1,11 +1,23 @@
 use base64::Engine;
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::Duration;
 
 pub fn paste_to_app(data_url: &str, bundle_id: &str) -> Result<(), String> {
     write_png_to_pasteboard(data_url)?;
-    activate_and_paste(bundle_id)
+
+    if !bundle_id.is_empty() {
+        let _ = Command::new("open").args(["-b", bundle_id]).status();
+        let delay = if bundle_id.contains("figma") { 700 } else { 350 };
+        std::thread::sleep(Duration::from_millis(delay));
+    }
+
+    match bundle_id {
+        "com.anthropic.claudefordesktop" => focus_text_area("Claude"),
+        "com.openai.chat" => focus_text_area("ChatGPT"),
+        _ => {}
+    }
+
+    send_cmd_v()
 }
 
 // AI tools accept multiple sequential image pastes as separate images
@@ -26,7 +38,18 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
         return Ok(());
     }
 
-    // Focus the target app once, then paste first image
+    if !bundle_id.is_empty() {
+        let _ = Command::new("open").args(["-b", bundle_id]).status();
+        let delay = if bundle_id.contains("figma") { 700 } else { 350 };
+        std::thread::sleep(Duration::from_millis(delay));
+    }
+
+    match bundle_id {
+        "com.anthropic.claudefordesktop" => focus_text_area("Claude"),
+        "com.openai.chat" => focus_text_area("ChatGPT"),
+        _ => {}
+    }
+
     let is_figma = bundle_id.contains("figma");
 
     // For Figma: get window bounds once so we can click the X position field
@@ -109,71 +132,19 @@ end tell
     Ok(())
 }
 
-fn activate_and_paste(bundle_id: &str) -> Result<(), String> {
-    let script = build_paste_script(bundle_id);
-    run_applescript(&script)
-}
-
-fn run_applescript(script: &str) -> Result<(), String> {
-    let mut child = Command::new("osascript")
-        .stdin(Stdio::piped())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(script.as_bytes()).map_err(|e| e.to_string())?;
-    }
-    child.wait().map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-fn build_paste_script(bundle_id: &str) -> String {
-    match bundle_id {
-        "" => {
-            // No specific app — paste to current frontmost
-            r#"tell application "System Events" to keystroke "v" using command down"#.to_string()
-        }
-        "com.anthropic.claudefordesktop" => {
-            // Claude: activate, click text area so cursor lands in it, paste
-            r#"tell application id "com.anthropic.claudefordesktop" to activate
-delay 0.3
-tell application "System Events"
-    tell process "Claude"
-        try
-            click (first text area of window 1)
-            delay 0.15
-        end try
-    end tell
-    keystroke "v" using command down
-end tell"#.to_string()
-        }
-        "com.openai.chat" => {
-            // ChatGPT: same — click text area first
-            r#"tell application id "com.openai.chat" to activate
-delay 0.3
-tell application "System Events"
-    tell process "ChatGPT"
-        try
-            click (first text area of window 1)
-            delay 0.15
-        end try
-    end tell
-    keystroke "v" using command down
-end tell"#.to_string()
-        }
-        "com.figma.Desktop" => {
-            // Figma: longer delay — app may need to finish loading canvas
-            r#"tell application id "com.figma.Desktop" to activate
-delay 0.8
-tell application "System Events" to keystroke "v" using command down"#.to_string()
-        }
-        _ => {
-            // Generic: activate and paste
-            format!(
-                "tell application id \"{}\" to activate\ndelay 0.25\ntell application \"System Events\" to keystroke \"v\" using command down",
-                bundle_id
-            )
-        }
-    }
+fn focus_text_area(process_name: &str) {
+    let _ = Command::new("osascript")
+        .args([
+            "-e", "tell application \"System Events\"",
+            "-e", &format!("tell process \"{}\"", process_name),
+            "-e", "try",
+            "-e", "click (first text area of window 1)",
+            "-e", "end try",
+            "-e", "end tell",
+            "-e", "end tell",
+        ])
+        .status();
+    std::thread::sleep(Duration::from_millis(120));
 }
 
 fn send_escape() -> Result<(), String> {
