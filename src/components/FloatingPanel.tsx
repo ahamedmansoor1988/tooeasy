@@ -65,8 +65,10 @@ export default function FloatingPanel({ event }: Props) {
     });
     getLastActiveApp().then(setActiveApp).catch(() => {});
     const appTimer = setInterval(() => {
-      getLastActiveApp().then(setActiveApp).catch(() => {});
-    }, 250);
+      getLastActiveApp().then(app => {
+        setActiveApp(prev => prev.bundle_id === app.bundle_id ? prev : app);
+      }).catch(() => {});
+    }, 600);
     resetDismissTimer();
     return () => {
       clearInterval(appTimer);
@@ -125,6 +127,8 @@ export default function FloatingPanel({ event }: Props) {
       showStatus("Allow Accessibility in System Settings.", false);
     } finally { setBusyDest(null); }
   }
+
+  const [pasteHover, setPasteHover] = useState(false);
 
   async function handlePasteOnTool() {
     if (!selCount) return;
@@ -284,18 +288,31 @@ export default function FloatingPanel({ event }: Props) {
 
         {/* Primary paste */}
         <div style={{ padding:"4px 16px 0" }}>
-          <button onClick={handlePasteOnTool} disabled={!selCount || isBusy || !activeApp.bundle_id} style={{
-            width:"100%", height:42,
-            background: !selCount || isBusy ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.34)",
-            border:"1px solid rgba(255,255,255,0.46)", borderRadius:999,
-            color:"rgba(20,24,33,0.86)",
-            fontSize:13.5, fontWeight:600, cursor: selCount && !isBusy && activeApp.bundle_id ? "pointer" : "default",
-            display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-            fontFamily:"inherit",
-            boxShadow:"0 10px 24px rgba(17,24,39,0.08), inset 0 1px 0 rgba(255,255,255,0.52)",
-            minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
-          }}>
-            <span className="glass-text" style={{ overflow:"hidden", textOverflow:"ellipsis", opacity: !selCount || isBusy ? 0.48 : 1 }}>
+          <button
+            onClick={handlePasteOnTool}
+            disabled={!selCount || isBusy || !activeApp.bundle_id}
+            onMouseEnter={() => setPasteHover(true)}
+            onMouseLeave={() => setPasteHover(false)}
+            style={{
+              width:"100%", height:42,
+              background: pasteHover && selCount && !isBusy && activeApp.bundle_id
+                ? "linear-gradient(135deg,#6366f1,#8b5cf6,#ec4899)"
+                : "rgba(255,255,255,0.92)",
+              border:"none", borderRadius:999,
+              color: pasteHover && selCount && !isBusy && activeApp.bundle_id ? "white" : "rgba(20,24,33,0.80)",
+              fontSize:13.5, fontWeight:600,
+              cursor: selCount && !isBusy && activeApp.bundle_id ? "pointer" : "default",
+              display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+              fontFamily:"inherit",
+              boxShadow: pasteHover && selCount && !isBusy && activeApp.bundle_id
+                ? "0 8px 24px rgba(99,102,241,0.35)"
+                : "0 2px 8px rgba(17,24,39,0.10), 0 1px 2px rgba(17,24,39,0.06)",
+              opacity: !selCount || isBusy || !activeApp.bundle_id ? 0.45 : 1,
+              transition:"background 200ms ease, color 200ms ease, box-shadow 200ms ease",
+              minWidth:0, whiteSpace:"nowrap", overflow:"hidden",
+            }}
+          >
+            <span style={{ overflow:"hidden", textOverflow:"ellipsis" }}>
               {busyDest==="active-tool" ? "Pasting…" : `Paste on ${activeToolName}`}
             </span>
           </button>
