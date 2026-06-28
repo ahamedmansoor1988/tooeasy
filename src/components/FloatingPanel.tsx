@@ -170,7 +170,7 @@ export default function FloatingPanel({ event }: Props) {
         boxShadow: "none",
         display: "flex", flexDirection: "column",
         overflow: "hidden",
-        fontFamily: "-apple-system, 'SF Pro Text', BlinkMacSystemFont, sans-serif",
+        fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif",
         color: "rgba(20,24,33,0.86)",
       }}>
         <div className="liquid-panel-content">
