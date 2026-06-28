@@ -188,8 +188,6 @@ export default function FloatingPanel({ event }: Props) {
             cursor:"grab", userSelect:"none",
           }}
         >
-          <img src={tooeasyIconUrl} alt="TooEasy" width={28} height={28}
-            style={{ borderRadius:8, display:"block", flexShrink:0 }} />
           <img src={tooeasyWordmarkUrl} alt="TooEasy"
             style={{ height:14, width:"auto", display:"block", flex:1, objectFit:"contain", objectPosition:"left" }} />
           {/* Close button */}
