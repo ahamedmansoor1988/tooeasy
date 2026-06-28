@@ -4,12 +4,7 @@ use std::time::Duration;
 
 pub fn paste_to_app(data_url: &str, bundle_id: &str) -> Result<(), String> {
     write_png_to_pasteboard(data_url)?;
-
-    if !bundle_id.is_empty() {
-        activate_app(bundle_id);
-    }
-
-    send_cmd_v()
+    activate_and_paste(bundle_id)
 }
 
 // AI tools accept multiple sequential image pastes as separate images
@@ -30,11 +25,7 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
         return Ok(());
     }
 
-    // Focus the target app once
-    if !bundle_id.is_empty() {
-        activate_app(bundle_id);
-    }
-
+    // Focus the target app once, then paste first image
     let is_figma = bundle_id.contains("figma");
 
     // For Figma: get window bounds once so we can click the X position field
@@ -46,9 +37,13 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
 
     for (i, data_url) in data_urls.iter().enumerate() {
         write_png_to_pasteboard(data_url)?;
-        std::thread::sleep(Duration::from_millis(150));
-        send_cmd_v()?;
-        std::thread::sleep(Duration::from_millis(500));
+        if i == 0 {
+            activate_and_paste(bundle_id)?;
+        } else {
+            std::thread::sleep(Duration::from_millis(300));
+            send_cmd_v()?;
+        }
+        std::thread::sleep(Duration::from_millis(400));
 
         if is_figma {
             // Set absolute X position by clicking the X field in Figma's design panel
@@ -113,9 +108,20 @@ end tell
     Ok(())
 }
 
-fn activate_app(bundle_id: &str) {
-    let _ = Command::new("open").args(["-b", bundle_id]).status();
-    std::thread::sleep(Duration::from_millis(300));
+fn activate_and_paste(bundle_id: &str) -> Result<(), String> {
+    let script = if bundle_id.is_empty() {
+        r#"tell application "System Events" to keystroke "v" using command down"#.to_string()
+    } else {
+        format!(
+            "tell application id \"{}\" to activate\ndelay 0.25\ntell application \"System Events\" to keystroke \"v\" using command down",
+            bundle_id
+        )
+    };
+    Command::new("osascript")
+        .args(["-e", &script])
+        .status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn send_escape() -> Result<(), String> {
