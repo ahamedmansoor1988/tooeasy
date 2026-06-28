@@ -1,0 +1,286 @@
+@import "tailwindcss";
+@import "@fontsource/dm-sans/400.css";
+@import "@fontsource/dm-sans/600.css";
+@import "remixicon/fonts/remixicon.css";
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  background: transparent;
+  color: #1c1c1e;
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+}
+
+.liquid-panel-material {
+  position: relative;
+  isolation: isolate;
+}
+
+body:has(.liquid-panel-material),
+body:has(.liquid-panel-material) #root {
+  width: 320px;
+  overflow: hidden;
+}
+
+.liquid-panel-material::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.015) 42%, rgba(255,255,255,0.055)),
+    rgba(255,255,255,0.018);
+  border: 1px solid rgba(255,255,255,0.30);
+  box-shadow:
+    0 18px 36px rgba(17,24,39,0.18),
+    0 5px 14px rgba(17,24,39,0.12),
+    inset 0 1px 0 rgba(255,255,255,0.82),
+    inset 0 -18px 34px rgba(17,24,39,0.06),
+    inset 0 -1px 0 rgba(255,255,255,0.20),
+    inset 1px 0 0 rgba(255,255,255,0.20),
+    inset -1px 0 0 rgba(255,255,255,0.12);
+}
+
+.liquid-panel-material::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,0.18), transparent 28%),
+    linear-gradient(315deg, rgba(80,110,180,0.10), transparent 34%);
+  opacity: 0.24;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,0.18),
+    inset 0 18px 32px rgba(255,255,255,0.06);
+}
+
+.liquid-panel-content {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.glass-text {
+  color: rgba(20,24,33,0.86);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.26);
+}
+
+.liquid-panel-content button {
+  appearance: none;
+  -webkit-appearance: none;
+  outline: none;
+  transition: opacity 120ms ease, background-color 120ms ease, border-color 120ms ease;
+}
+
+.liquid-panel-content button:not(:disabled):hover {
+  opacity: 0.92;
+}
+
+.liquid-panel-content button:not(:disabled):active {
+  opacity: 0.84;
+}
+
+.shot-tile .shot-action {
+  opacity: 0;
+  transform: scale(0.92);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.shot-tile:hover .shot-action,
+.shot-tile:focus-within .shot-action {
+  opacity: 1;
+  transform: scale(1);
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 4px; }
+
+/* ── Design tokens ─────────────────────────────────────────────────────── */
+:root {
+  --bg:        #f0f1f7;
+  --surface:   #ffffff;
+  --blue:      #4F6BF0;
+  --blue-dark: #3a52d4;
+  --green:     #22c55e;
+  --gray-dot:  #9ca3af;
+  --blue-dot:  #60a5fa;
+  --text-1:    #1c1c1e;
+  --text-2:    #6b7280;
+  --text-3:    #9ca3af;
+  --border:    rgba(0,0,0,0.07);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05);
+}
+
+/* ── Panel window ──────────────────────────────────────────────────────── */
+.panel-root {
+  width: 280px;
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: none;
+  color: var(--text-1);
+}
+
+/* ── Bubble ────────────────────────────────────────────────────────────── */
+.bubble-root {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; position: relative; user-select: none;
+  transition: transform 200ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 160ms;
+}
+.bubble-root:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.13);
+}
+.bubble-root:active { transform: scale(0.93); }
+
+/* ── Gallery background (glass) ────────────────────────────────────────── */
+.gallery-bg {
+  min-height: 100vh;
+  background: transparent;
+  color: var(--text-1);
+}
+
+/* ── White card ────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Section label ─────────────────────────────────────────────────────── */
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Destination row button ────────────────────────────────────────────── */
+.dest-row {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0;
+  background: none; border: none;
+  color: var(--text-1);
+  font-size: 13px; font-weight: 500;
+  cursor: pointer; font-family: inherit;
+  border-radius: 8px;
+  transition: background 100ms;
+}
+.dest-row:hover { background: var(--bg); padding-left: 6px; padding-right: 6px; }
+.dest-row:disabled { opacity: 0.4; pointer-events: none; }
+
+/* ── Blue CTA button ───────────────────────────────────────────────────── */
+.btn-primary {
+  height: 36px; padding: 0 16px;
+  background: rgba(255,255,255,0.25);
+  border: 1px solid rgba(255,255,255,0.50);
+  border-radius: 999px;
+  color: white;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+  display: flex; align-items: center; gap: 6px;
+  transition: background 120ms;
+}
+.btn-primary:hover { background: rgba(255,255,255,0.35); }
+
+/* ── Icon button (Copy, Annotate) ──────────────────────────────────────── */
+.btn-icon {
+  height: 34px; padding: 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-1);
+  font-size: 13px; font-weight: 500;
+  cursor: pointer; font-family: inherit;
+  display: flex; align-items: center; gap: 6px;
+  box-shadow: var(--shadow-sm);
+  transition: background 100ms;
+}
+.btn-icon:hover { background: var(--bg); }
+
+/* ── Screenshot card in gallery ────────────────────────────────────────── */
+.screenshot-card {
+  background: var(--surface);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 140ms, transform 140ms;
+  cursor: pointer;
+}
+.screenshot-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Stat card ─────────────────────────────────────────────────────────── */
+.stat-card {
+  background: var(--surface);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Settings card ─────────────────────────────────────────────────────── */
+.settings-card {
+  background: var(--surface);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Titlebar ──────────────────────────────────────────────────────────── */
+.titlebar-glass {
+  background: rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+/* ── Sidebar filter item ───────────────────────────────────────────────── */
+.sidebar-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: 8px;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer; transition: background 100ms, color 100ms;
+}
+.sidebar-item:hover { background: rgba(0,0,0,0.04); color: var(--text-1); }
+.sidebar-item.active { background: rgba(79,107,240,0.10); color: var(--blue); }
+
+/* ── Animations ────────────────────────────────────────────────────────── */
+.panel-enter { animation: panel-in 240ms cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+@keyframes panel-in {
+  from { opacity: 0; transform: scale(0.95) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes bubble-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 0 0 0   rgba(79,107,240,0.40); }
+  70%  { box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 0 0 8px rgba(79,107,240,0); }
+  100% { box-shadow: 0 4px 16px rgba(0,0,0,0.10), 0 0 0 0   rgba(79,107,240,0); }
+}
+
+.animate-fade-up    { animation: fade-up 360ms cubic-bezier(0.34,1.56,0.64,1) forwards; }
+.animate-pulse-ring { animation: pulse-ring 1.4s ease infinite; }

@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "TooEasy default capabilities",
+  "windows": ["gallery", "panel"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "fs:default",
+    "sql:allow-execute",
+    "sql:allow-select",
+    "sql:allow-load"
+  ]
+}
