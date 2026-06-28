@@ -1,5 +1,6 @@
 use base64::Engine;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 use std::time::Duration;
 
 pub fn paste_to_app(data_url: &str, bundle_id: &str) -> Result<(), String> {
@@ -110,10 +111,18 @@ end tell
 
 fn activate_and_paste(bundle_id: &str) -> Result<(), String> {
     let script = build_paste_script(bundle_id);
-    Command::new("osascript")
-        .args(["-e", &script])
-        .status()
+    run_applescript(&script)
+}
+
+fn run_applescript(script: &str) -> Result<(), String> {
+    let mut child = Command::new("osascript")
+        .stdin(Stdio::piped())
+        .spawn()
         .map_err(|e| e.to_string())?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(script.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    child.wait().map_err(|e| e.to_string())?;
     Ok(())
 }
 
