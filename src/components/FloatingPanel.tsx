@@ -27,7 +27,7 @@ const DESTINATIONS = [
 ];
 
 const PANEL_WIDTH = 320;
-const PANEL_BASE_HEIGHT = 360;
+const PANEL_BASE_HEIGHT = 400;
 const THUMBNAIL_ROW_HEIGHT = 92;
 
 function panelHeightForCaptureCount(count: number) {
