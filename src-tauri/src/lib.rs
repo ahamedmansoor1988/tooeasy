@@ -6,6 +6,7 @@ mod paste_manager;
 use active_app_detector::ActiveApp;
 use std::sync::Mutex;
 use tauri::{
+    image::Image,
     LogicalSize,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -312,8 +313,12 @@ pub fn run() {
             let quit_i = MenuItem::with_id(app, "quit", "Quit TooEasy", true, Some("cmd+q"))?;
             let menu = Menu::with_items(app, &[&open_i, &prefs_i, &quit_i])?;
 
+            let tray_icon = Image::from_path(
+                app.path().resource_dir().unwrap().join("icons/tray-icon.png")
+            ).unwrap_or_else(|_| app.default_window_icon().unwrap().clone());
+
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
