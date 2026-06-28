@@ -354,17 +354,13 @@ export default function FloatingPanel({ event }: Props) {
         </div>
 
         {/* Open Gallery */}
-        <div style={{ padding:"12px 16px 16px" }}>
+        <div style={{ padding:"10px 16px 18px", display:"flex", justifyContent:"center" }}>
           <button onClick={() => { showGallery().catch(()=>{}); }} style={{
-            width:"100%", height:34,
-            background:"rgba(255,255,255,0.14)",
-            border:"1px solid rgba(255,255,255,0.28)", borderRadius:10,
-            cursor:"pointer", fontFamily:"inherit",
-            display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-            boxShadow:"inset 0 1px 0 rgba(255,255,255,0.32)",
+            background:"none", border:"none", cursor:"pointer", fontFamily:"inherit",
+            display:"flex", alignItems:"center", gap:4, padding:"4px 8px",
           }}>
-            <Ri icon="ri-gallery-fill" gradient="linear-gradient(135deg,#6366f1,#818cf8)" size={14} />
-            <span className="glass-text" style={{ fontSize:12, fontWeight:600, opacity:0.72 }}>Open Gallery</span>
+            <span className="glass-text" style={{ fontSize:12, fontWeight:500, opacity:0.55 }}>Open Gallery</span>
+            <i className="ri-arrow-right-s-line" style={{ fontSize:14, color:"rgba(20,24,33,0.45)", WebkitTextFillColor:"rgba(20,24,33,0.45)", lineHeight:1 }} />
           </button>
         </div>
 
