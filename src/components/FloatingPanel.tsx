@@ -188,22 +188,10 @@ export default function FloatingPanel({ event }: Props) {
             cursor:"grab", userSelect:"none",
           }}
         >
-          <div style={{
-            width:31, height:31, borderRadius:11, flexShrink:0,
-            background:"rgba(255,255,255,0.32)",
-            border:"1px solid rgba(255,255,255,0.46)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            boxShadow:"inset 0 1px 0 rgba(255,255,255,0.62)",
-          }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"
-                stroke="rgba(31,41,55,0.64)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <circle cx="12" cy="13" r="4" stroke="rgba(31,41,55,0.64)" strokeWidth="2"/>
-            </svg>
-          </div>
-          <span className="glass-text" style={{ fontSize:15, fontWeight:600, letterSpacing:"0", flex:1 }}>
-            TooEasy
-          </span>
+          <img src={tooeasyIconUrl} alt="TooEasy" width={28} height={28}
+            style={{ borderRadius:8, display:"block", flexShrink:0 }} />
+          <img src={tooeasyWordmarkUrl} alt="TooEasy"
+            style={{ height:14, width:"auto", display:"block", flex:1, objectFit:"contain", objectPosition:"left" }} />
           {/* Close button */}
           <button
             onClick={() => hidePanel().catch(() => {})}
@@ -295,20 +283,16 @@ export default function FloatingPanel({ event }: Props) {
             onMouseLeave={() => setPasteHover(false)}
             style={{
               width:"100%", height:42,
-              background: pasteHover && selCount && !isBusy && activeApp.bundle_id
-                ? "linear-gradient(135deg,#6366f1,#8b5cf6,#ec4899)"
-                : "rgba(255,255,255,0.92)",
+              background: pasteHover ? "#f7f7f7" : "#ffffff",
               border:"none", borderRadius:999,
-              color: pasteHover && selCount && !isBusy && activeApp.bundle_id ? "white" : "rgba(20,24,33,0.80)",
+              color:"rgba(20,24,33,0.82)",
               fontSize:13.5, fontWeight:600,
               cursor: selCount && !isBusy && activeApp.bundle_id ? "pointer" : "default",
               display:"flex", alignItems:"center", justifyContent:"center", gap:6,
               fontFamily:"inherit",
-              boxShadow: pasteHover && selCount && !isBusy && activeApp.bundle_id
-                ? "0 8px 24px rgba(99,102,241,0.35)"
-                : "0 2px 8px rgba(17,24,39,0.10), 0 1px 2px rgba(17,24,39,0.06)",
+              boxShadow:"0 2px 8px rgba(17,24,39,0.10), 0 1px 2px rgba(17,24,39,0.06)",
               opacity: !selCount || isBusy || !activeApp.bundle_id ? 0.45 : 1,
-              transition:"background 200ms ease, color 200ms ease, box-shadow 200ms ease",
+              transition:"background 150ms ease",
               minWidth:0, whiteSpace:"nowrap", overflow:"hidden",
             }}
           >
@@ -403,6 +387,8 @@ export default function FloatingPanel({ event }: Props) {
 import claudeLogoUrl from "../assets/logos/claude.svg";
 import chatgptLogoUrl from "../assets/logos/chatgpt.svg";
 import figmaLogoUrl from "../assets/logos/figma.svg";
+import tooeasyIconUrl from "../assets/logos/tooeasy-icon.svg";
+import tooeasyWordmarkUrl from "../assets/logos/tooeasy-wordmark.svg";
 
 function ClaudeLogo()  { return <LogoImg src={claudeLogoUrl}  alt="Claude" />; }
 function ChatGPTLogo() { return <LogoImg src={chatgptLogoUrl} alt="ChatGPT" />; }
