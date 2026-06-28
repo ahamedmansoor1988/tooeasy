@@ -109,19 +109,62 @@ end tell
 }
 
 fn activate_and_paste(bundle_id: &str) -> Result<(), String> {
-    let script = if bundle_id.is_empty() {
-        r#"tell application "System Events" to keystroke "v" using command down"#.to_string()
-    } else {
-        format!(
-            "tell application id \"{}\" to activate\ndelay 0.25\ntell application \"System Events\" to keystroke \"v\" using command down",
-            bundle_id
-        )
-    };
+    let script = build_paste_script(bundle_id);
     Command::new("osascript")
         .args(["-e", &script])
         .status()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn build_paste_script(bundle_id: &str) -> String {
+    match bundle_id {
+        "" => {
+            // No specific app — paste to current frontmost
+            r#"tell application "System Events" to keystroke "v" using command down"#.to_string()
+        }
+        "com.anthropic.claudefordesktop" => {
+            // Claude: activate, click text area so cursor lands in it, paste
+            r#"tell application id "com.anthropic.claudefordesktop" to activate
+delay 0.3
+tell application "System Events"
+    tell process "Claude"
+        try
+            click (first text area of window 1)
+            delay 0.15
+        end try
+    end tell
+    keystroke "v" using command down
+end tell"#.to_string()
+        }
+        "com.openai.chat" => {
+            // ChatGPT: same — click text area first
+            r#"tell application id "com.openai.chat" to activate
+delay 0.3
+tell application "System Events"
+    tell process "ChatGPT"
+        try
+            click (first text area of window 1)
+            delay 0.15
+        end try
+    end tell
+    keystroke "v" using command down
+end tell"#.to_string()
+        }
+        "com.figma.Desktop" => {
+            // Figma: longer delay — app may need to finish loading canvas
+            r#"tell application id "com.figma.Desktop" to activate
+delay 0.8
+tell application "System Events" to keystroke "v" using command down"#.to_string()
+        }
+        _ => {
+            // Generic: activate and paste
+            format!(
+                "tell application id \"{}\" to activate\ndelay 0.25\ntell application \"System Events\" to keystroke \"v\" using command down",
+                bundle_id
+            )
+        }
+    }
 }
 
 fn send_escape() -> Result<(), String> {
