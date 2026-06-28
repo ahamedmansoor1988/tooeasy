@@ -114,12 +114,8 @@ end tell
 }
 
 fn activate_app(bundle_id: &str) {
-    let script = format!(
-        r#"tell application id "{}" to activate"#,
-        bundle_id
-    );
-    let _ = Command::new("osascript").args(["-e", &script]).status();
-    std::thread::sleep(Duration::from_millis(120));
+    let _ = Command::new("open").args(["-b", bundle_id]).status();
+    std::thread::sleep(Duration::from_millis(300));
 }
 
 fn send_escape() -> Result<(), String> {

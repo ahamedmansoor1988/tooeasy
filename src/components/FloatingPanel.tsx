@@ -133,7 +133,6 @@ export default function FloatingPanel({ event }: Props) {
   async function handlePasteOnTool() {
     if (!selCount) return;
     setBusyDest("active-tool");
-    hidePanel().catch(() => {});
     try {
       if (selUrls.length === 1) {
         await pasteToApp(selUrls[0], activeApp.bundle_id);
