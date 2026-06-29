@@ -56,6 +56,12 @@ export const pasteToApp = (
 export const copyImage = (dataUrl: string): Promise<void> =>
   invoke("copy_image", { dataUrl });
 
+export const pasteFileToApp = (filepath: string, bundleId: string): Promise<void> =>
+  invoke("paste_file_to_app", { filepath, bundleId });
+
+export const copyImageFile = (filepath: string): Promise<void> =>
+  invoke("copy_image_file", { filepath });
+
 export const addSessionScreenshot = (dataUrl: string): Promise<number> =>
   invoke("add_session_screenshot", { dataUrl });
 
@@ -67,6 +73,11 @@ export const removeSessionScreenshot = (index: number): Promise<void> =>
 
 export const clearSessionScreenshots = (): Promise<void> =>
   invoke("clear_session_screenshots");
+
+export const getIsPro = (): Promise<boolean> => invoke("get_is_pro");
+export const setIsPro = (value: boolean): Promise<void> => invoke("set_is_pro", { value });
+export const activateLicense = (key: string): Promise<void> => invoke("activate_license", { key });
+export const deactivateLicense = (): Promise<void> => invoke("deactivate_license");
 
 export const copySelected = (dataUrls: string[]): Promise<void> =>
   invoke("copy_selected", { dataUrls });

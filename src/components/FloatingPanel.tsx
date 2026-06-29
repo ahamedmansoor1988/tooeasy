@@ -1,46 +1,64 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   addSessionScreenshot, saveScreenshot,
   getSessionScreenshots, pasteSelectedToApp, pasteToApp, removeSessionScreenshot,
-  hidePanel, getLastActiveApp, resizePanel, showGallery,
+  clearSessionScreenshots,
+  hidePanel, getLastActiveApp, resizePanel, showGallery, getIsPro,
+  activateLicense,
 } from "../lib/tauri";
 import type { ActiveApp, ClipboardImageEvent } from "../lib/tauri";
 
+// Set to your Gumroad/LemonSqueezy purchase URL once you publish
+const PURCHASE_URL = "https://tooeasy.gumroad.com/l/pro";
+
 function Ri({ icon, gradient, size = 16 }: { icon: string; gradient: string; size?: number }) {
+  void gradient;
   return (
     <i className={icon} style={{
       fontSize: size, lineHeight: 1, display: "inline-block",
-      background: gradient,
-      WebkitBackgroundClip: "text",
-      WebkitTextFillColor: "transparent",
-      backgroundClip: "text",
+      color: "var(--panel-icon)",
+      WebkitTextFillColor: "var(--panel-icon)",
     }} />
   );
 }
 
-// ── AI destination config ────────────────────────────────────────────────────
-const DESTINATIONS = [
-  { id: "claude",  bundleId: "com.anthropic.claudefordesktop", name: "Claude",  logo: <ClaudeLogo /> },
-  { id: "chatgpt", bundleId: "com.openai.chat",                name: "ChatGPT", logo: <ChatGPTLogo /> },
-  { id: "figma",   bundleId: "com.figma.Desktop",              name: "Figma",   logo: <FigmaLogo /> },
-];
-
 const PANEL_WIDTH = 320;
-const PANEL_BASE_HEIGHT = 400;
-const THUMBNAIL_ROW_HEIGHT = 92;
+const PANEL_EMPTY_HEIGHT = 458;
+const PANEL_BASE_HEIGHT = 476;
+const PANEL_ROW_HEIGHT = 80;
+const PANEL_STATUS_HEIGHT = 56;
+const PANEL_TRANSITION_MS = 220;
+const COLS = 3;
+const FREE_LIMIT = 3;
+const PRO_LIMIT = 12;
 
-function panelHeightForCaptureCount(count: number) {
-  const rows = Math.max(1, Math.ceil(count / 2));
-  const rawHeight = PANEL_BASE_HEIGHT + Math.max(0, rows - 1) * THUMBNAIL_ROW_HEIGHT;
-  const screenCap = typeof window === "undefined"
-    ? rawHeight
-    : Math.max(PANEL_BASE_HEIGHT, window.screen.availHeight - 40);
-
-  return Math.min(rawHeight, screenCap);
-}
 
 interface Props { event: ClipboardImageEvent | null; }
+
+const SENSITIVE_PATTERNS: RegExp[] = [
+  /(?:api[_\- ]?key|api[_\- ]?secret|password|passwd|pwd|secret|token|auth(?:key)?|credential|access[_\- ]?key|private[_\- ]?key|db[_\- ]?pass(?:word)?|database[_\- ]?(?:url|password))\s*[-:=\s]\s*(\S{4,})/gi,
+  /\b(sk-[a-zA-Z0-9_-]{10,}|gsk_[a-zA-Z0-9_-]{10,}|sk-ant-[a-zA-Z0-9_-]{10,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{20,}|xox[bpa]-[a-zA-Z0-9-]{10,})/g,
+  /[Bb]earer\s+([a-zA-Z0-9._~+/=-]{10,})/g,
+  /\b(\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4})\b/g,
+  /\b(\d{3}-\d{2}-\d{4})\b/g,
+];
+
+async function scanForSensitive(dataUrl: string): Promise<boolean> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    type OcrLine = { text: string; y: number; h: number };
+    const lines: OcrLine[] = await invoke("ocr_data_url", { dataUrl });
+    const fullText = lines.map(l => l.text).join("\n");
+    for (const pat of SENSITIVE_PATTERNS) {
+      pat.lastIndex = 0;
+      if (pat.test(fullText)) return true;
+    }
+    return false;
+  } catch { return false; }
+}
 
 export default function FloatingPanel({ event }: Props) {
   const [shots, setShots]       = useState<string[]>([]);
@@ -48,8 +66,14 @@ export default function FloatingPanel({ event }: Props) {
   const [busyDest, setBusyDest] = useState<string | null>(null);
   const [status, setStatus]     = useState<{ msg: string; ok: boolean } | null>(null);
   const [activeApp, setActiveApp] = useState<ActiveApp>({ bundle_id: "", name: "" });
-  const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dismissRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isPro, setIsPro]       = useState(false);
+  const [sensitiveShots, setSensitiveShots] = useState<Set<string>>(new Set());
+  const isProRef      = useRef(false);
+  const timerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nativeHeightRef = useRef(PANEL_EMPTY_HEIGHT);
+  const savingRef     = useRef(false);
 
   function resetDismissTimer() {
     const autoDismiss = localStorage.getItem("te_autoDismiss") !== "0";
@@ -63,6 +87,7 @@ export default function FloatingPanel({ event }: Props) {
     getSessionScreenshots().then(s => {
       setShots(s); setSelected(new Set(s.map((_,i) => i)));
     });
+    getIsPro().then(v => { setIsPro(v); isProRef.current = v; }).catch(() => {});
     getLastActiveApp().then(setActiveApp).catch(() => {});
     const appTimer = setInterval(() => {
       getLastActiveApp().then(app => {
@@ -70,17 +95,70 @@ export default function FloatingPanel({ event }: Props) {
       }).catch(() => {});
     }, 600);
     resetDismissTimer();
+
+    let unlistenCap: (() => void) | null = null;
+    listen("screenshot-cap-reached", () => {
+      if (isProRef.current) {
+        showStatus("Supports only 12 images for now", true);
+      } else {
+        showStatus("Screenshot limit reached — upgrade for more", false);
+      }
+    }).then(fn => { unlistenCap = fn; });
+
     return () => {
       clearInterval(appTimer);
       if (dismissRef.current) clearTimeout(dismissRef.current);
+      unlistenCap?.();
     };
   }, []);
 
   useEffect(() => {
     if (!event) return;
-    addSessionScreenshot(event.data_url)
+    const dataUrl = event.data_url;
+    const limit = isPro ? PRO_LIMIT : FREE_LIMIT;
+
+    // JS-side cap check — catches the case where Rust event arrives before listener is registered
+    if (shots.length >= limit && !shots.includes(dataUrl)) {
+      if (isPro) {
+        showStatus("Supports only 12 images for now", true);
+      } else {
+        showStatus("Screenshot limit reached — upgrade for more", false);
+      }
+      return;
+    }
+
+    // Optimistic update — show thumbnail immediately, no IPC wait
+    setShots(prev => {
+      if (prev.includes(dataUrl) || prev.length >= limit) return prev;
+      return [...prev, dataUrl];
+    });
+    setSelected(prev => {
+      const shotCount = shots.length;
+      if (shots.includes(dataUrl) || shotCount >= limit) return prev;
+      return new Set([...prev, shotCount]);
+    });
+    // Background sync — reconcile with backend state, preserve existing selection
+    addSessionScreenshot(dataUrl)
       .then(() => getSessionScreenshots())
-      .then(s => { setShots(s); setSelected(new Set(s.map((_,i) => i))); });
+      .then(s => {
+        setShots(prev => {
+          setSelected(prevSel => {
+            const n = new Set(prevSel);
+            s.forEach((url, i) => {
+              if (!prev.includes(url)) n.add(i); // only auto-select truly new images
+            });
+            return n;
+          });
+          return s;
+        });
+      })
+      .catch(() => {});
+
+    // Auto-scan new capture for sensitive data
+    scanForSensitive(dataUrl).then(isSensitive => {
+      if (isSensitive) setSensitiveShots(prev => new Set([...prev, dataUrl]));
+    });
+
     getLastActiveApp().then(setActiveApp).catch(() => {});
     resetDismissTimer();
   }, [event]);
@@ -89,7 +167,15 @@ export default function FloatingPanel({ event }: Props) {
     setSelected(p => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
   }
 
+  async function handleClearAll() {
+    await clearSessionScreenshots();
+    setShots([]);
+    setSelected(new Set());
+    setSensitiveShots(new Set());
+  }
+
   async function handleRemove(i: number) {
+    const removedUrl = shots[i];
     await removeSessionScreenshot(i);
     const s = await getSessionScreenshots();
     setShots(s);
@@ -98,37 +184,60 @@ export default function FloatingPanel({ event }: Props) {
       p.forEach(x => { if (x !== i) n.add(x > i ? x - 1 : x); });
       return n;
     });
+    if (removedUrl) setSensitiveShots(p => { const n = new Set(p); n.delete(removedUrl); return n; });
   }
 
   const selUrls  = [...selected].sort().map(i => shots[i]).filter(Boolean);
   const selCount = selected.size;
   const isBusy   = busyDest !== null;
   const activeToolName = activeApp.name || "Tool";
-  const panelHeight = panelHeightForCaptureCount(shots.length);
+  const [pasteHover, setPasteHover] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [licenseKey, setLicenseKey] = useState("");
+  const [licenseError, setLicenseError] = useState<string | null>(null);
+  const [activating, setActivating] = useState(false);
+  isProRef.current = isPro;
+
+  // Always show real thumbnails, including all 12 Pro images. Do not collapse
+  // the last slot into a "+N" tile.
+  const visibleShots = shots;
+  const visibleRows = Math.max(1, Math.ceil(Math.max(visibleShots.length, 1) / COLS));
+  const panelHeight = shots.length === 0
+    ? PANEL_EMPTY_HEIGHT
+    : PANEL_BASE_HEIGHT + (visibleRows - 1) * PANEL_ROW_HEIGHT + (status ? PANEL_STATUS_HEIGHT : 0);
+  const [visualPanelHeight, setVisualPanelHeight] = useState(PANEL_EMPTY_HEIGHT);
 
   useEffect(() => {
-    resizePanel(panelHeight).catch(() => {});
+    if (resizeTimerRef.current) {
+      clearTimeout(resizeTimerRef.current);
+      resizeTimerRef.current = null;
+    }
+
+    if (panelHeight >= nativeHeightRef.current) {
+      nativeHeightRef.current = panelHeight;
+      resizePanel(panelHeight).catch(() => {});
+      requestAnimationFrame(() => setVisualPanelHeight(panelHeight));
+      return;
+    }
+
+    setVisualPanelHeight(panelHeight);
+    resizeTimerRef.current = setTimeout(() => {
+      nativeHeightRef.current = panelHeight;
+      resizePanel(panelHeight).catch(() => {});
+      resizeTimerRef.current = null;
+    }, PANEL_TRANSITION_MS);
   }, [panelHeight]);
 
   function showStatus(msg: string, ok: boolean) {
     setStatus({ msg, ok });
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setStatus(null), 2500);
+    timerRef.current = setTimeout(() => setStatus(null), ok ? 2500 : 10000);
   }
 
-  async function pasteTo(dest: typeof DESTINATIONS[0]) {
-    if (!selCount) return;
-    setBusyDest(dest.id);
-    try {
-      selUrls.length === 1
-        ? await pasteToApp(selUrls[0], dest.bundleId)
-        : await pasteSelectedToApp(selUrls, dest.bundleId);
-    } catch {
-      showStatus("Allow Accessibility in System Settings.", false);
-    } finally { setBusyDest(null); }
+  function pasteErrorMessage(error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error || "");
+    return msg.length > 120 ? `${msg.slice(0, 117)}...` : msg || "Paste failed.";
   }
-
-  const [pasteHover, setPasteHover] = useState(false);
 
   async function handlePasteOnTool() {
     if (!selCount) return;
@@ -139,7 +248,20 @@ export default function FloatingPanel({ event }: Props) {
       } else {
         await pasteSelectedToApp(selUrls, activeApp.bundle_id);
       }
-    } catch { showStatus("Allow Accessibility in System Settings.", false); }
+    } catch (error) { showStatus(pasteErrorMessage(error), false); }
+    finally { setBusyDest(null); }
+  }
+
+  async function handlePasteTo(dest: typeof DESTINATIONS[0]) {
+    if (!selCount) return;
+    setBusyDest(dest.id);
+    try {
+      if (selUrls.length === 1) {
+        await pasteToApp(selUrls[0], dest.bundleId);
+      } else {
+        await pasteSelectedToApp(selUrls, dest.bundleId);
+      }
+    } catch (error) { showStatus(pasteErrorMessage(error), false); }
     finally { setBusyDest(null); }
   }
 
@@ -149,35 +271,58 @@ export default function FloatingPanel({ event }: Props) {
   }
 
   async function handleSave() {
-    if (!selCount) return;
+    if (!shots.length || savingRef.current) return;
+    savingRef.current = true;
     setBusyDest("save");
     let saved = 0;
     try {
-      for (const url of selUrls) {
+      for (const url of shots) {
         await saveScreenshot(url, "TooEasy");
         saved++;
       }
-      showStatus(`${saved} image${saved > 1 ? "s" : ""} saved to library`, true);
+      showStatus(`${saved} image${saved > 1 ? "s" : ""} saved`, true);
     } catch { showStatus("Save failed.", false); }
-    finally { setBusyDest(null); }
+    finally { savingRef.current = false; setBusyDest(null); }
+  }
+
+  async function handleActivate() {
+    const key = licenseKey.trim();
+    if (!key) { setLicenseError("Please enter your license key."); return; }
+    setActivating(true);
+    setLicenseError(null);
+    try {
+      await activateLicense(key);
+      setIsPro(true);
+      setShowUpgrade(false);
+      setLicenseKey("");
+      showStatus("Pro unlocked! Enjoy unlimited captures.", true);
+    } catch (e) {
+      setLicenseError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setActivating(false);
+    }
   }
 
   return (
     <>
-      <div className="liquid-panel-material" style={{
-        width: PANEL_WIDTH,
-        height: panelHeight,
-        maxHeight: panelHeight,
-        background: "transparent",
-        border: "none",
-        borderRadius: 30,
-        boxShadow: "none",
-        display: "flex", flexDirection: "column",
-        overflow: "hidden",
-        fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif",
-        color: "rgba(20,24,33,0.86)",
-      }}>
-        <div className="liquid-panel-content">
+      <div
+        className="liquid-panel-material"
+        onMouseEnter={() => getCurrentWindow().setFocus().catch(() => {})}
+        style={{
+          width: PANEL_WIDTH,
+          height: visualPanelHeight,
+          background: "transparent",
+          border: "none",
+          borderRadius: 30,
+          boxShadow: "none",
+          display: "flex", flexDirection: "column",
+          overflow: "hidden",
+          transition: `height ${PANEL_TRANSITION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+          fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+          color: "var(--panel-text-1)",
+        }}
+      >
+        <div className="liquid-panel-content" style={{ position:"relative" }}>
 
         {/* Header */}
         <div
@@ -188,52 +333,64 @@ export default function FloatingPanel({ event }: Props) {
             cursor:"grab", userSelect:"none",
           }}
         >
-          <img src={tooeasyWordmarkUrl} alt="TooEasy"
-            style={{ height:14, width:"auto", display:"block", flex:1, objectFit:"contain", objectPosition:"left" }} />
+          <div
+            aria-label="TooEasy"
+            role="img"
+            style={{
+              height:16,
+              width:76,
+              flex:1,
+              background:"var(--panel-text-1)",
+              mask:`url(${tooeasyWordmarkUrl}) left center / contain no-repeat`,
+              WebkitMask:`url(${tooeasyWordmarkUrl}) left center / contain no-repeat`,
+            }}
+          />
           {/* Close button */}
           <button
             onClick={() => hidePanel().catch(() => {})}
             title="Close"
             style={{
-              width:28, height:28, borderRadius:"50%", flexShrink:0,
-              background:"rgba(255,255,255,0.22)", border:"1px solid rgba(255,255,255,0.36)",
+              width:30, height:30, borderRadius:"50%", flexShrink:0,
+              background:"rgba(255,255,255,0.62)", border:"1px solid rgba(31,41,55,0.10)",
               display:"flex", alignItems:"center", justifyContent:"center",
               cursor:"pointer", padding:0,
-              boxShadow:"inset 0 1px 0 rgba(255,255,255,0.52)",
+              boxShadow:"0 6px 16px rgba(17,24,39,0.10), inset 0 1px 0 rgba(255,255,255,0.82)",
             }}
           >
-            <Ri icon="ri-close-fill" gradient="linear-gradient(135deg,#9ca3af,#6b7280)" size={13} />
+            <Ri icon="ri-close-fill" gradient="linear-gradient(135deg,#4b5563,#111827)" size={14} />
           </button>
         </div>
 
         {/* Screenshot tray */}
         <div style={{ padding:"8px 16px 10px" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-            <span className="glass-text" style={{ fontSize:10.5, fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase", opacity:0.72 }}>
-              {shots.length === 0 ? "No captures" : `${shots.length} screenshot${shots.length>1?"s":""} · ${selCount} selected`}
+            <span className="glass-text" style={{ fontSize:10.5, fontWeight:500, letterSpacing:"0.06em", textTransform:"uppercase", opacity:0.72 }}>
+              {shots.length === 0 ? "No captures" : `${shots.length} Image | ${selCount} Selected`}
             </span>
-            {shots.length > 1 && (
+            {shots.length > 0 && (
               <div style={{ display:"flex", gap:4 }}>
-                <button onClick={() => setSelected(new Set(shots.map((_,i)=>i)))} style={chipSt}>All</button>
-                <button onClick={() => setSelected(new Set())} style={chipSt}>None</button>
+                {shots.length > 1 && <>
+                  <button onClick={() => setSelected(new Set(shots.map((_,i)=>i)))} style={chipSt}>All</button>
+                  <button onClick={() => setSelected(new Set())} style={chipSt}>None</button>
+                </>}
+                <button onClick={handleClearAll} style={{ ...chipSt, color:"var(--panel-text-1)" }}>Clear</button>
               </div>
             )}
           </div>
 
           <div style={{
-            minHeight:104, overflow:"visible",
-            background:"transparent", borderRadius:14, padding:"3px 2px",
-            border:"none",
-            boxShadow:"none",
+            minHeight:80,
+            background:"transparent", borderRadius:14, padding:"3px 2px 10px",
+            border:"none", boxShadow:"none",
             display: shots.length === 0 ? "flex" : "grid",
-            gridTemplateColumns: shots.length === 0 ? undefined : "repeat(2, minmax(0, 1fr))",
-            gap:10,
+            gridTemplateColumns: shots.length === 0 ? undefined : `repeat(${COLS}, minmax(0, 1fr))`,
+            gap:8,
             alignItems: shots.length === 0 ? "center" : "flex-start",
             justifyContent: shots.length === 0 ? "center" : "flex-start",
           }}>
             {shots.length === 0 ? (
-              <span className="glass-text" style={{ fontSize:13, fontWeight:560, opacity:0.72 }}>Take a screenshot to begin</span>
-            ) : shots.map((url, i) => {
+              <span className="glass-text" style={{ fontSize:13, fontWeight:500, opacity:0.72 }}>Take a screenshot to begin</span>
+            ) : visibleShots.map((url, i) => {
               const isSel = selected.has(i);
               return (
                 <div
@@ -243,54 +400,164 @@ export default function FloatingPanel({ event }: Props) {
                   onClick={() => toggleSelect(i)}
                   style={{
                     position:"relative", minWidth:0, cursor:"pointer",
-                    padding:4, borderRadius:15,
-                    background: isSel ? "rgba(126,87,255,0.06)" : "rgba(255,255,255,0.08)",
-                    border: isSel ? "2px solid rgba(126,87,255,0.95)" : "1px solid rgba(255,255,255,0.20)",
+                    padding:3, borderRadius:12,
+                    background: isSel ? "rgba(34,197,94,0.22)" : "rgba(255,255,255,0.08)",
+                    border: isSel ? "2px solid rgba(34,197,94,0.80)" : "1px solid rgba(255,255,255,0.20)",
                     boxShadow: isSel
-                      ? "0 7px 18px rgba(126,87,255,0.16), inset 0 1px 0 rgba(255,255,255,0.30)"
+                      ? "0 7px 18px rgba(34,197,94,0.18), inset 0 1px 0 rgba(34,197,94,0.30)"
                       : "inset 0 1px 0 rgba(255,255,255,0.18)",
                   }}
                 >
-                  <img src={url} style={{
-                    width:"100%", height:72, objectFit:"cover", borderRadius:11, display:"block",
-                    boxShadow:"0 6px 14px rgba(31,38,62,0.13)",
-                    transition:"filter 120ms",
-                  }}/>
+                  <div style={{
+                    width:"100%", height:56, borderRadius:9, overflow:"hidden", position:"relative",
+                    boxShadow:"0 4px 10px rgba(31,38,62,0.13)",
+                  }}>
+                    <img src={url} decoding="async" style={{
+                      width:"100%", height:"100%", objectFit:"cover", display:"block",
+                      filter: sensitiveShots.has(url) ? "blur(14px) brightness(0.7)" : "none",
+                    }}/>
+                    {sensitiveShots.has(url) && (
+                      <div style={{
+                        position:"absolute", inset:0,
+                        display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2,
+                        background:"rgba(239,68,68,0.20)",
+                        border:"1px solid rgba(239,68,68,0.50)",
+                        pointerEvents:"none",
+                      }}>
+                        <i className="ri-shield-fill" style={{ fontSize:13, color:"#ef4444", WebkitTextFillColor:"#ef4444" }} />
+                        <span style={{ fontSize:8, fontWeight:700, color:"#ef4444", letterSpacing:"0.04em" }}>SENSITIVE</span>
+                      </div>
+                    )}
+                  </div>
                   <button className="shot-action" onClick={e => { e.stopPropagation(); handleRemove(i); }} style={{
-                    position:"absolute", top:7, right:7, width:20, height:20,
-                    borderRadius:7, background:"rgba(239,68,68,0.92)",
+                    position:"absolute", top:5, right:5, width:18, height:18,
+                    borderRadius:6, background:"rgba(239,68,68,0.92)",
                     border:"1px solid rgba(255,255,255,0.72)", color:"white",
                     cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                    padding:0,
-                    boxShadow:"0 4px 12px rgba(0,0,0,0.18)",
+                    padding:0, boxShadow:"0 4px 12px rgba(0,0,0,0.18)",
                   }}>
-                    <i className="ri-close-fill" style={{ fontSize:11, color:"white", WebkitTextFillColor:"white", lineHeight:1 }} />
+                    <i className="ri-close-fill" style={{ fontSize:10, color:"white", WebkitTextFillColor:"white", lineHeight:1 }} />
                   </button>
                 </div>
               );
             })}
           </div>
+
+          {/* License key modal */}
+          {showUpgrade && (
+            <div style={{
+              position:"absolute", inset:0, zIndex:100,
+              background:"rgba(15,17,24,0.72)", backdropFilter:"blur(12px)",
+              borderRadius:30, display:"flex", flexDirection:"column",
+              alignItems:"center", justifyContent:"center", padding:"28px 24px", gap:0,
+            }}>
+              {/* Close */}
+              <button
+                onClick={() => { setShowUpgrade(false); setLicenseKey(""); setLicenseError(null); }}
+                style={{
+                  position:"absolute", top:16, right:16,
+                  width:28, height:28, borderRadius:"50%",
+                  background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.18)",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  cursor:"pointer", padding:0,
+                }}
+              >
+                <Ri icon="ri-close-fill" gradient="linear-gradient(135deg,#d1d5db,#9ca3af)" size={13} />
+              </button>
+
+              {/* Icon */}
+              <div style={{
+                width:48, height:48, borderRadius:16,
+                background:"rgba(255,255,255,0.16)",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                marginBottom:14,
+                boxShadow:"0 8px 24px rgba(17,24,39,0.20)",
+              }}>
+                <i className="ri-key-2-fill" style={{ fontSize:22, color:"white", WebkitTextFillColor:"white", lineHeight:1 }} />
+              </div>
+
+              <p style={{ margin:"0 0 4px", fontSize:15, fontWeight:700, color:"white", textAlign:"center" }}>
+                Unlock TooEasy Pro
+              </p>
+              <p style={{ margin:"0 0 18px", fontSize:11.5, color:"rgba(255,255,255,0.52)", textAlign:"center", lineHeight:1.4 }}>
+                Up to 12 captures per session
+              </p>
+
+              {/* Key input */}
+              <input
+                value={licenseKey}
+                onChange={e => { setLicenseKey(e.target.value); setLicenseError(null); }}
+                onKeyDown={e => { if (e.key === "Enter") handleActivate(); }}
+                placeholder="XXXX-XXXX-XXXX-XXXX"
+                autoFocus
+                style={{
+                  width:"100%", height:38, borderRadius:10,
+                  background:"rgba(255,255,255,0.09)", border:`1px solid ${licenseError ? "rgba(239,68,68,0.7)" : "rgba(255,255,255,0.20)"}`,
+                  color:"white", fontSize:12.5, fontFamily:"'SF Mono', monospace",
+                  padding:"0 12px", outline:"none", boxSizing:"border-box",
+                  letterSpacing:"0.06em", marginBottom:licenseError ? 6 : 10,
+                }}
+              />
+              {licenseError && (
+                <p style={{ margin:"0 0 10px", fontSize:11, color:"rgba(239,68,68,0.9)", textAlign:"center" }}>
+                  {licenseError}
+                </p>
+              )}
+
+              {/* Activate button */}
+              <button
+                onClick={handleActivate}
+                disabled={activating}
+                style={{
+                  width:"100%", height:40, borderRadius:10,
+                  background:"#ffffff",
+                  border:"none", color:"#20242e", fontSize:13, fontWeight:600,
+                  cursor: activating ? "default" : "pointer",
+                  opacity: activating ? 0.7 : 1,
+                  marginBottom:12,
+                  boxShadow:"0 6px 18px rgba(17,24,39,0.18)",
+                  fontFamily:"inherit",
+                }}
+              >
+                {activating ? "Activating…" : "Activate License"}
+              </button>
+
+              {/* Buy link */}
+              <button
+                onClick={() => openUrl(PURCHASE_URL).catch(() => {})}
+                style={{
+                  background:"none", border:"none", padding:0,
+                  fontSize:11.5, color:"rgba(255,255,255,0.82)", cursor:"pointer",
+                  textDecoration:"underline", fontFamily:"inherit",
+                }}
+              >
+                Don't have a key? Buy TooEasy Pro →
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Primary paste */}
-        <div style={{ padding:"4px 16px 0" }}>
+        <div style={{ padding:"8px 16px 0" }}>
           <button
             onClick={handlePasteOnTool}
             disabled={!selCount || isBusy || !activeApp.bundle_id}
             onMouseEnter={() => setPasteHover(true)}
             onMouseLeave={() => setPasteHover(false)}
             style={{
-              width:"100%", height:42,
-              background: pasteHover ? "#f7f7f7" : "#ffffff",
+              width:"100%", height:48,
+              background: "#ffffff",
               border:"none", borderRadius:999,
-              color:"rgba(20,24,33,0.82)",
-              fontSize:13.5, fontWeight:600,
+              color:"#20242e",
+              fontSize:15, fontWeight:500,
               cursor: selCount && !isBusy && activeApp.bundle_id ? "pointer" : "default",
               display:"flex", alignItems:"center", justifyContent:"center", gap:6,
               fontFamily:"inherit",
-              boxShadow:"0 2px 8px rgba(17,24,39,0.10), 0 1px 2px rgba(17,24,39,0.06)",
+              boxShadow: pasteHover
+                ? "0 12px 28px rgba(17,24,39,0.16), 0 3px 8px rgba(17,24,39,0.10), inset 0 1px 0 rgba(255,255,255,0.95)"
+                : "0 8px 22px rgba(17,24,39,0.13), 0 2px 5px rgba(17,24,39,0.08), inset 0 1px 0 rgba(255,255,255,0.95)",
               opacity: !selCount || isBusy || !activeApp.bundle_id ? 0.45 : 1,
-              transition:"background 150ms ease",
+              transition:"box-shadow 150ms ease, opacity 150ms ease",
               minWidth:0, whiteSpace:"nowrap", overflow:"hidden",
             }}
           >
@@ -300,80 +567,90 @@ export default function FloatingPanel({ event }: Props) {
           </button>
         </div>
 
-        {/* AI shortcuts */}
-        <div style={{ padding:"14px 16px 0" }}>
-          <span className="glass-text" style={{ fontSize:10, fontWeight:600, letterSpacing:"0.07em", textTransform:"uppercase", opacity:0.5 }}>
-            Send to App
-          </span>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(4, minmax(0, 1fr))", gap:8, marginTop:8 }}>
-            {DESTINATIONS.map(dest => {
-              const isThis = busyDest === dest.id;
-              return (
-                <button key={dest.id}
-                  onClick={() => pasteTo(dest)}
-                  disabled={!selCount || isBusy}
-                  title={`Paste into ${dest.name}`}
-                  style={{
-                    display:"flex", flexDirection:"column", alignItems:"center", gap:5,
-                    padding:"8px 5px", borderRadius:16,
-                    background: isThis ? "rgba(255,255,255,0.34)" : "rgba(255,255,255,0.20)",
-                    border:"1px solid rgba(255,255,255,0.36)",
-                    cursor: selCount && !isBusy ? "pointer" : "default",
-                    opacity: isBusy && !isThis ? 0.35 : 1,
-                    minWidth: 0,
-                    boxShadow:"inset 0 1px 0 rgba(255,255,255,0.42)",
-                  }}
-                >
-                  <div style={{ width:30, height:30, borderRadius:10, overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    {dest.logo}
-                  </div>
-                  <span className="glass-text" style={{ fontSize:9.5, fontWeight:600, maxWidth:"100%", overflow:"hidden", textOverflow:"ellipsis" }}>
-                    {isThis ? "…" : dest.name}
-                  </span>
-                </button>
-              );
-            })}
-            <button onClick={handleSave} disabled={!selCount || isBusy} title="Save to gallery" style={{
-              display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:5,
-              padding:"8px 5px", borderRadius:16,
-              background: busyDest === "save" ? "rgba(255,255,255,0.34)" : "rgba(255,255,255,0.20)",
-              border:"1px solid rgba(255,255,255,0.36)",
-              cursor: selCount && !isBusy ? "pointer" : "default",
-              opacity: isBusy && busyDest !== "save" ? 0.35 : 1,
-              minWidth:0,
-              boxShadow:"inset 0 1px 0 rgba(255,255,255,0.42)",
-            }}>
-              {busyDest === "save"
-                ? <Ri icon="ri-check-fill"    gradient="linear-gradient(135deg,#10b981,#34d399)" size={22} />
-                : <Ri icon="ri-bookmark-fill" gradient="linear-gradient(135deg,#f59e0b,#f97316)" size={22} />
-              }
-              <span className="glass-text" style={{ fontSize:9.5, fontWeight:600 }}>Save</span>
-            </button>
+        {/* Secondary actions */}
+        <div style={{ padding:"16px 16px 22px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+          <button onClick={handleSave} disabled={!selCount || isBusy} title="Save to gallery" style={secondaryButtonStyle(selCount > 0 && !isBusy)}>
+            {busyDest === "save"
+              ? <Ri icon="ri-check-fill" gradient="linear-gradient(135deg,#10b981,#34d399)" size={16} />
+              : <Ri icon="ri-bookmark-fill" gradient="linear-gradient(135deg,#111827,#4b5563)" size={16} />
+            }
+            <span className="glass-text" style={{ fontSize:12, fontWeight:500, opacity:0.82 }}>Save</span>
+          </button>
+          <button onClick={() => { showGallery().catch(()=>{}); }} style={secondaryButtonStyle(true)}>
+            <i className="ri-gallery-view-2" style={{ fontSize:14, color:"var(--panel-icon)", WebkitTextFillColor:"var(--panel-icon)", lineHeight:1 }} />
+            <span className="glass-text" style={{ fontSize:12, fontWeight:500, opacity:0.82 }}>Gallery</span>
+          </button>
+        </div>
+
+        {/* Quick paste destinations */}
+        <div style={{ padding:"0 16px 20px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:8 }}>
+            <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.18)" }} />
+            <span className="glass-text" style={{ fontSize:10, fontWeight:500, opacity:0.45, letterSpacing:"0.05em" }}>PASTE TO</span>
+            <div style={{ flex:1, height:1, background:"rgba(255,255,255,0.18)" }} />
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            {DESTINATIONS.map(dest => (
+              <button
+                key={dest.id}
+                onClick={() => handlePasteTo(dest)}
+                disabled={!selCount || isBusy}
+                title={`Paste to ${dest.name}`}
+                style={{
+                  height:36,
+                  background:"rgba(255,255,255,0.28)",
+                  border:"1px solid rgba(255,255,255,0.40)",
+                  borderRadius:12,
+                  cursor: selCount && !isBusy ? "pointer" : "default",
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:5,
+                  opacity: !selCount || isBusy ? 0.4 : 1,
+                  transition:"background 120ms ease, opacity 150ms ease",
+                  boxShadow: busyDest === dest.id
+                    ? "0 0 0 2px rgba(255,255,255,0.55)"
+                    : "inset 0 1px 0 rgba(255,255,255,0.46)",
+                }}
+              >
+                <img src={dest.logo} alt={dest.name} style={{ width:14, height:14, objectFit:"contain" }} />
+                <span className="glass-text" style={{ fontSize:11, fontWeight:500, opacity:0.80 }}>{dest.name}</span>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Open Gallery */}
-        <div style={{ padding:"10px 16px 18px", display:"flex", justifyContent:"center" }}>
-          <button onClick={() => { showGallery().catch(()=>{}); }} style={{
-            background:"none", border:"none", cursor:"pointer", fontFamily:"inherit",
-            display:"flex", alignItems:"center", gap:4, padding:"4px 8px",
-          }}>
-            <span className="glass-text" style={{ fontSize:12, fontWeight:500, opacity:0.55 }}>Open Gallery</span>
-            <i className="ri-arrow-right-s-line" style={{ fontSize:14, color:"rgba(20,24,33,0.45)", WebkitTextFillColor:"rgba(20,24,33,0.45)", lineHeight:1 }} />
-          </button>
+        {/* Guidance text */}
+        <div style={{ padding:"0 18px 28px" }}>
+          <p style={{ margin:0, fontSize:10.5, lineHeight:1.5, textAlign:"center", opacity:0.40 }}
+            className="glass-text">
+            Paste works best with a focused text input
+          </p>
         </div>
 
         {/* Status toast */}
         {status && (
           <div style={{
-            margin:"0 13px 12px", padding:"8px 12px",
+            margin:"8px 20px 20px", padding:"10px 12px",
             background: status.ok ? "rgba(220,252,231,0.50)" : "rgba(254,226,226,0.52)",
             border:`1px solid ${status.ok ? "rgba(34,197,94,0.28)" : "rgba(239,68,68,0.28)"}`,
             borderRadius:13, fontSize:12,
             color: status.ok ? "#15803d" : "#dc2626",
-            textAlign:"center",
             boxShadow:"inset 0 1px 0 rgba(255,255,255,0.38)",
-          }}>{status.msg}</div>
+            display:"flex", alignItems:"center", justifyContent:"center", gap:6,
+            minHeight:40,
+            lineHeight:1.35,
+            textAlign:"center",
+          }}>
+            <span style={{ minWidth:0, overflowWrap:"anywhere" }}>{status.msg}</span>
+            {!status.ok && !isPro && status.msg.includes("upgrade") && (
+              <button
+                onClick={() => { openUrl(PURCHASE_URL).catch(() => {}); }}
+                style={{
+                  background:"rgba(239,68,68,0.18)", border:"1px solid rgba(239,68,68,0.35)",
+                  borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600,
+                  color:"#dc2626", cursor:"pointer", fontFamily:"inherit", flexShrink:0,
+                }}
+              >Upgrade</button>
+            )}
+          </div>
         )}
         </div>
       </div>
@@ -381,36 +658,44 @@ export default function FloatingPanel({ event }: Props) {
   );
 }
 
-// ── AI Brand Logos (bundled local assets) ────────────────────────────────────
+// ── Brand assets ─────────────────────────────────────────────────────────────
+import tooeasyWordmarkUrl from "../assets/logos/tooeasy-wordmark.svg";
 import claudeLogoUrl from "../assets/logos/claude.svg";
 import chatgptLogoUrl from "../assets/logos/chatgpt.svg";
-import tooeasyWordmarkUrl from "../assets/logos/tooeasy-wordmark.svg";
+import figmaLogoUrl from "../assets/logos/figma.svg";
+import chromeLogoUrl from "../assets/logos/chrome.svg";
 
-function ClaudeLogo()  { return <LogoImg src={claudeLogoUrl}  alt="Claude" />; }
-function ChatGPTLogo() { return <LogoImg src={chatgptLogoUrl} alt="ChatGPT" />; }
-function FigmaLogo() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="20" height="30" style={{ display:"block" }}>
-      <path fill="#0acf83" d="M50 300c27.6 0 50-22.4 50-50v-50H50c-27.6 0-50 22.4-50 50s22.4 50 50 50z"/>
-      <path fill="#a259ff" d="M0 150c0-27.6 22.4-50 50-50h50v100H50c-27.6 0-50-22.4-50-50z"/>
-      <path fill="#f24e1e" d="M0 50C0 22.4 22.4 0 50 0h50v100H50C22.4 100 0 77.6 0 50z"/>
-      <path fill="#ff7262" d="M100 0h50c27.6 0 50 22.4 50 50s-22.4 50-50 50h-50V0z"/>
-      <path fill="#1abcfe" d="M200 150c0 27.6-22.4 50-50 50s-50-22.4-50-50 22.4-50 50-50 50 22.4 50 50z"/>
-    </svg>
-  );
-}
-
-function LogoImg({ src, alt }: { src: string; alt: string }) {
-  return <img src={src} alt={alt} width={30} height={30} draggable={false}
-    style={{ display:"block", objectFit:"contain", userSelect:"none" }} />;
-}
+const DESTINATIONS = [
+  { id: "claude",  bundleId: "com.anthropic.claudefordesktop", name: "Claude",  logo: claudeLogoUrl },
+  { id: "chatgpt", bundleId: "com.openai.chat",                name: "ChatGPT", logo: chatgptLogoUrl },
+  { id: "figma",   bundleId: "com.figma.Desktop",              name: "Figma",   logo: figmaLogoUrl },
+  { id: "chrome",  bundleId: "com.google.Chrome",              name: "Chrome",  logo: chromeLogoUrl },
+];
 
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const chipSt: React.CSSProperties = {
   height:19, padding:"0 8px",
   background:"rgba(255,255,255,0.38)", border:"1px solid rgba(255,255,255,0.46)",
-  borderRadius:999, color:"#6b7280",
+  borderRadius:999, color:"var(--panel-text-2)",
   fontSize:10, fontWeight:500, cursor:"pointer",
   boxShadow:"inset 0 1px 0 rgba(255,255,255,0.46)",
 };
+
+function secondaryButtonStyle(enabled: boolean): React.CSSProperties {
+  return {
+    height:34,
+    background:"rgba(255,255,255,0.34)",
+    border:"1px solid rgba(255,255,255,0.46)",
+    borderRadius:999,
+    cursor: enabled ? "pointer" : "default",
+    fontFamily:"inherit",
+    display:"flex",
+    alignItems:"center",
+    justifyContent:"center",
+    gap:6,
+    padding:"0 12px",
+    opacity: enabled ? 1 : 0.45,
+    boxShadow:"inset 0 1px 0 rgba(255,255,255,0.46)",
+  };
+}

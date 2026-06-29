@@ -6,11 +6,117 @@ pub fn paste_to_app(data_url: &str, bundle_id: &str) -> Result<(), String> {
     write_png_to_pasteboard(data_url)?;
 
     if !bundle_id.is_empty() {
+        // Skip the long launch delay when the app is already running.
+        // is_process_running() costs ~80 ms but saves 300 ms on the sleep.
+        let already_running = is_process_running(bundle_id);
         let _ = Command::new("open").args(["-b", bundle_id]).status();
-        std::thread::sleep(Duration::from_millis(400));
+        std::thread::sleep(Duration::from_millis(if already_running { 100 } else { 500 }));
+        focus_text_input_if_needed(bundle_id);
     }
 
-    send_cmd_v()
+    // Send Cmd+V directly to the target process so it is never intercepted by
+    // the TooEasy panel (which is always_on_top and may hold keyboard focus).
+    send_cmd_v_to_bundle(bundle_id)
+}
+
+// Map a bundle ID to the System Events process name.
+fn process_name_for(bundle_id: &str) -> Option<&'static str> {
+    if bundle_id.contains("anthropic") || bundle_id.contains("claude") {
+        Some("Claude")
+    } else if bundle_id.contains("openai") {
+        Some("ChatGPT")
+    } else if bundle_id.contains("google.Chrome") {
+        Some("Google Chrome")
+    } else if bundle_id.contains("figma") {
+        Some("Figma")
+    } else {
+        None
+    }
+}
+
+// Send Cmd+V directly to the named process (not the frontmost app).
+// This works even if TooEasy's always_on_top panel stole keyboard focus.
+fn send_cmd_v_to_bundle(bundle_id: &str) -> Result<(), String> {
+    match process_name_for(bundle_id) {
+        Some(name) => {
+            let script = format!(
+                r#"tell application "System Events" to tell process "{name}" to keystroke "v" using command down"#
+            );
+            Command::new("osascript")
+                .args(["-e", &script])
+                .status()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        }
+        None => send_cmd_v(),
+    }
+}
+
+// Returns true if a process with this bundle ID is already running.
+fn is_process_running(bundle_id: &str) -> bool {
+    let script = format!(
+        "tell application \"System Events\" to (exists process whose bundle identifier is \"{}\")",
+        bundle_id
+    );
+    Command::new("osascript")
+        .args(["-e", &script])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "true")
+        .unwrap_or(false)
+}
+
+// Focus the text composer for apps that don't auto-focus it on activation.
+fn focus_text_input_if_needed(bundle_id: &str) {
+    if bundle_id.contains("anthropic") || bundle_id.contains("claude") {
+        focus_claude_composer();
+    } else if bundle_id.contains("google.Chrome") {
+        focus_chrome_input();
+    }
+}
+
+// Focus Claude's composer text area.
+// Claude (Electron) has a very deep AX tree that changes dynamically, making AX
+// navigation unreliable. We use two coordinate clicks:
+//   1. winBottom-200: activates the Electron web view (may land in the chat area)
+//   2. winBottom-100: lands in the composer text area (well above the send-button row)
+// After both clicks Claude has keyboard focus AND the composer is active, so the
+// following send_cmd_v_to_bundle call will paste the image correctly.
+fn focus_claude_composer() {
+    let script = r#"tell application "System Events"
+    tell process "Claude"
+        set frontmost to true
+        delay 0.2
+        if (count of windows) = 0 then return
+        set w to window 1
+        set p to position of w
+        set s to size of w
+        set cx to (item 1 of p) + (item 1 of s) / 2
+        set winBottom to (item 2 of p) + (item 2 of s)
+        -- First click: activate the Electron web view
+        click at {cx, winBottom - 200}
+        delay 0.15
+        -- Second click: land in the composer (100 px from bottom)
+        click at {cx, winBottom - 100}
+        delay 0.1
+        set frontmost to true
+    end tell
+end tell"#;
+    let _ = Command::new("osascript").args(["-e", script]).status();
+    std::thread::sleep(Duration::from_millis(150));
+}
+
+// Click at the bottom-center of the Chrome window to land in the active web input.
+fn focus_chrome_input() {
+    let script = r#"tell application "System Events"
+    tell process "Google Chrome"
+        set frontmost to true
+        set p to position of window 1
+        set s to size of window 1
+        click at {(item 1 of p) + (item 1 of s) / 2, (item 2 of p) + (item 2 of s) - 110}
+    end tell
+end tell"#;
+    let _ = Command::new("osascript").args(["-e", script]).status();
+    std::thread::sleep(Duration::from_millis(100));
 }
 
 // AI tools accept multiple sequential image pastes as separate images
@@ -31,10 +137,11 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
         return Ok(());
     }
 
-    // Focus the target app once
     if !bundle_id.is_empty() {
+        let already_running = is_process_running(bundle_id);
         let _ = Command::new("open").args(["-b", bundle_id]).status();
-        std::thread::sleep(Duration::from_millis(450));
+        std::thread::sleep(Duration::from_millis(if already_running { 100 } else { 500 }));
+        focus_text_input_if_needed(bundle_id);
     }
 
     let is_figma = bundle_id.contains("figma");
@@ -49,7 +156,7 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
     for (i, data_url) in data_urls.iter().enumerate() {
         write_png_to_pasteboard(data_url)?;
         std::thread::sleep(Duration::from_millis(150));
-        send_cmd_v()?;
+        send_cmd_v_to_bundle(bundle_id)?;
         std::thread::sleep(Duration::from_millis(500));
 
         if is_figma {
@@ -138,6 +245,16 @@ fn send_cmd_v() -> Result<(), String> {
 
 pub fn copy_image(data_url: &str) -> Result<(), String> {
     write_png_to_pasteboard(data_url)
+}
+
+pub fn paste_file_to_app(filepath: &str, bundle_id: &str) -> Result<(), String> {
+    let data_url = crate::file_manager::read_screenshot_data_url(filepath)?;
+    paste_to_app(&data_url, bundle_id)
+}
+
+pub fn copy_image_file(filepath: &str) -> Result<(), String> {
+    let data_url = crate::file_manager::read_screenshot_data_url(filepath)?;
+    write_png_to_pasteboard(&data_url)
 }
 
 pub fn stitch_to_data_url(data_urls: &[String]) -> Result<String, String> {

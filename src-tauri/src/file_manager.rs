@@ -47,7 +47,7 @@ pub fn save_screenshot(data_url: &str, app_name: &str) -> Result<SavedScreenshot
         safe_app
     };
 
-    let filename = format!("screenshot_{}_{}.png", now.format("%H%M%S"), safe_app);
+    let filename = format!("screenshot_{}{:03}_{}.png", now.format("%H%M%S"), now.timestamp_subsec_millis(), safe_app);
     let filepath = dir.join(&filename);
 
     fs::write(&filepath, &bytes).map_err(|e| e.to_string())?;
@@ -72,8 +72,6 @@ pub fn list_screenshots() -> Result<Vec<ScreenshotItem>, String> {
         .into_iter()
         .take(100)
         .map(|(path, modified)| {
-            let bytes = fs::read(&path).map_err(|e| e.to_string())?;
-            let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
             let captured_at = chrono::DateTime::<Local>::from(modified)
                 .format("%b %-d, %Y %-I:%M %p")
                 .to_string();
@@ -84,11 +82,22 @@ pub fn list_screenshots() -> Result<Vec<ScreenshotItem>, String> {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "screenshot.png".to_string()),
                 filepath: path.to_string_lossy().into_owned(),
-                data_url: format!("data:image/png;base64,{b64}"),
+                // Do NOT pre-load image bytes — gallery uses convertFileSrc(filepath)
+                // so the browser loads images directly from disk via asset:// protocol.
+                data_url: String::new(),
                 captured_at,
             })
         })
         .collect()
+}
+
+// Read a single screenshot file and return its base64 data URL.
+// Used when the actual image bytes are needed (paste, copy to clipboard).
+pub fn read_screenshot_data_url(filepath: &str) -> Result<String, String> {
+    let path = validated_screenshot_path(filepath)?;
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Ok(format!("data:image/png;base64,{b64}"))
 }
 
 pub fn delete_screenshot(filepath: &str) -> Result<(), String> {

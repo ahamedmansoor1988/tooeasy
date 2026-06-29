@@ -1,29 +1,116 @@
 mod active_app_detector;
 mod clipboard_watcher;
 mod file_manager;
+mod license_manager;
 mod paste_manager;
 
 use active_app_detector::ActiveApp;
 use std::sync::Mutex;
 use tauri::{
     image::Image,
-    LogicalSize,
-    menu::{Menu, MenuItem},
+    LogicalPosition, LogicalSize,
+    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     window::{Effect, EffectState, EffectsBuilder},
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
 };
 
+// ── macOS Vision OCR ──────────────────────────────────────────────────────────
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct CGPoint { x: f64, y: f64 }
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct CGSize  { width: f64, height: f64 }
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct CGRect  { origin: CGPoint, size: CGSize }
+
+#[derive(serde::Serialize)]
+struct OcrLine { text: String, y: f64, h: f64 }
+
+#[tauri::command]
+fn ocr_image(filepath: String) -> Result<Vec<OcrLine>, String> {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let c = std::ffi::CString::new(filepath).map_err(|e| e.to_string())?;
+        let ns_path: *mut Object = msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()];
+        let file_url: *mut Object = msg_send![class!(NSURL), fileURLWithPath: ns_path];
+
+        let request: *mut Object = msg_send![class!(VNRecognizeTextRequest), new];
+        let _: () = msg_send![request, setRecognitionLevel: 0isize]; // Accurate
+        let opts: *mut Object  = msg_send![class!(NSDictionary), dictionary];
+        let handler: *mut Object = msg_send![class!(VNImageRequestHandler), alloc];
+        let handler: *mut Object = msg_send![handler, initWithURL: file_url options: opts];
+
+        let arr: *mut Object = msg_send![class!(NSMutableArray), new];
+        let _: () = msg_send![arr, addObject: request];
+        let _: bool = msg_send![handler, performRequests: arr error: std::ptr::null_mut::<*mut Object>()];
+
+        let results: *mut Object = msg_send![request, results];
+        if results.is_null() { return Ok(vec![]); }
+        let count: usize = msg_send![results, count];
+
+        let mut lines: Vec<OcrLine> = Vec::new();
+        for i in 0..count {
+            let obs: *mut Object  = msg_send![results, objectAtIndex: i];
+            let bbox: CGRect      = msg_send![obs, boundingBox];
+            let y_top = (1.0 - bbox.origin.y - bbox.size.height).max(0.0);
+
+            let cands: *mut Object = msg_send![obs, topCandidates: 1usize];
+            let cc: usize          = msg_send![cands, count];
+            if cc == 0 { continue; }
+            let cand: *mut Object  = msg_send![cands, objectAtIndex: 0usize];
+            let ns_s: *mut Object  = msg_send![cand, string];
+            let ptr: *const std::os::raw::c_char = msg_send![ns_s, UTF8String];
+            if ptr.is_null() { continue; }
+            let text = std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned();
+            lines.push(OcrLine { text, y: y_top, h: bbox.size.height });
+        }
+        lines.sort_by(|a, b| a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal));
+        Ok(lines)
+    }
+}
+#[tauri::command]
+fn ocr_data_url(data_url: String) -> Result<Vec<OcrLine>, String> {
+    use base64::{engine::general_purpose, Engine};
+    // Strip "data:image/...;base64," prefix
+    let b64 = data_url
+        .splitn(2, ',')
+        .nth(1)
+        .ok_or("Invalid data URL")?;
+    let bytes = general_purpose::STANDARD.decode(b64).map_err(|e| e.to_string())?;
+
+    // Write to a temp file, run OCR, then delete
+    let tmp_path = std::env::temp_dir().join(format!("te_ocr_{}.png", std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
+    std::fs::write(&tmp_path, &bytes).map_err(|e| e.to_string())?;
+    let result = ocr_image(tmp_path.to_string_lossy().into_owned());
+    let _ = std::fs::remove_file(&tmp_path);
+    result
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const PANEL_WIDTH: f64 = 320.0;
-const PANEL_HEIGHT: f64 = 400.0;
+const PANEL_HEIGHT: f64 = 458.0;
 const PANEL_MIN_HEIGHT: f64 = PANEL_HEIGHT;
-const PANEL_THUMBNAIL_ROW_HEIGHT: f64 = 92.0;
+const PANEL_FILLED_BASE_HEIGHT: f64 = 476.0;
+const PANEL_THUMBNAIL_ROW_HEIGHT: f64 = 80.0;
+const PANEL_MAX_VISIBLE_SHOTS: usize = 12;
+const GALLERY_WIDTH: f64 = 940.0;
+const GALLERY_HEIGHT: f64 = 640.0;
+
+pub const FREE_LIMIT: usize  = 3;
+pub const PRO_LIMIT: usize   = 12;
 
 pub struct AppState {
     pub last_active_app: Mutex<ActiveApp>,
     pub pending_image: Mutex<Option<String>>,
-    // All screenshots captured this session — frontend manages selection
     pub session_screenshots: Mutex<Vec<String>>,
+    pub is_pro: Mutex<bool>,
+    // Set by paste commands so the clipboard watcher ignores the write-back.
+    pub suppress_watcher_until: Mutex<Option<std::time::Instant>>,
 }
 
 #[tauri::command]
@@ -70,13 +157,24 @@ fn edit_screenshot(filepath: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn paste_to_app(data_url: String, bundle_id: String) -> Result<(), String> {
+fn paste_to_app(app: AppHandle, data_url: String, bundle_id: String) -> Result<(), String> {
+    suppress_watcher(&app, 800);
     paste_manager::paste_to_app(&data_url, &bundle_id)
 }
 
 #[tauri::command]
 fn copy_image(data_url: String) -> Result<(), String> {
     paste_manager::copy_image(&data_url)
+}
+
+#[tauri::command]
+fn paste_file_to_app(filepath: String, bundle_id: String) -> Result<(), String> {
+    paste_manager::paste_file_to_app(&filepath, &bundle_id)
+}
+
+#[tauri::command]
+fn copy_image_file(filepath: String) -> Result<(), String> {
+    paste_manager::copy_image_file(&filepath)
 }
 
 #[tauri::command]
@@ -87,16 +185,48 @@ fn get_pending_image(state: State<AppState>) -> Option<String> {
 // Session screenshot commands — called by frontend when a new clipboard event fires
 #[tauri::command]
 fn add_session_screenshot(state: State<AppState>, data_url: String) -> Result<usize, String> {
+    let is_pro = *state.is_pro.lock().unwrap();
+    let limit = if is_pro { PRO_LIMIT } else { FREE_LIMIT };
     let mut shots = state.session_screenshots.lock().unwrap();
-    // Dedup: skip if this exact data_url is already in the session
     if shots.iter().any(|s| s == &data_url) {
         return Ok(shots.len());
     }
-    if shots.len() >= 10 {
-        shots.remove(0);
+    if shots.len() >= limit {
+        return Ok(shots.len()); // silently drop — UI already shows the cap
     }
     shots.push(data_url);
     Ok(shots.len())
+}
+
+#[tauri::command]
+fn get_is_pro(state: State<AppState>) -> bool {
+    *state.is_pro.lock().unwrap()
+}
+
+#[tauri::command]
+fn set_is_pro(state: State<AppState>, value: bool) {
+    *state.is_pro.lock().unwrap() = value;
+}
+
+/// Validate a license key and, if valid, persist it and set is_pro = true.
+#[tauri::command]
+fn activate_license(state: State<AppState>, key: String) -> Result<(), String> {
+    match license_manager::verify_key(&key) {
+        Ok(true) => {
+            license_manager::save_license(&key)?;
+            *state.is_pro.lock().unwrap() = true;
+            Ok(())
+        }
+        Ok(false) => Err("Invalid license key. Please check and try again.".to_string()),
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+fn deactivate_license(state: State<AppState>) -> Result<(), String> {
+    license_manager::remove_license()?;
+    *state.is_pro.lock().unwrap() = false;
+    Ok(())
 }
 
 #[tauri::command]
@@ -129,11 +259,21 @@ fn copy_selected(data_urls: Vec<String>) -> Result<(), String> {
 
 // Paste each selected screenshot separately into the app (one Cmd+V per image)
 #[tauri::command]
-fn paste_selected_to_app(data_urls: Vec<String>, bundle_id: String) -> Result<(), String> {
+fn paste_selected_to_app(app: AppHandle, data_urls: Vec<String>, bundle_id: String) -> Result<(), String> {
     if data_urls.is_empty() {
         return Err("No screenshots selected".into());
     }
+    // Each image takes ~650ms to paste; suppress the clipboard watcher for the full duration
+    let suppress_ms = (data_urls.len() as u64) * 800 + 600;
+    suppress_watcher(&app, suppress_ms);
     paste_manager::paste_images_sequential(&data_urls, &bundle_id)
+}
+
+fn suppress_watcher(app: &AppHandle, millis: u64) {
+    if let Some(state) = app.try_state::<AppState>() {
+        *state.suppress_watcher_until.lock().unwrap() =
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(millis));
+    }
 }
 
 fn panel_position(app: &AppHandle) -> (f64, f64) {
@@ -153,6 +293,26 @@ fn panel_position(app: &AppHandle) -> (f64, f64) {
     ((sw as f64 - PANEL_WIDTH - 20.0).max(0.0), 20.0_f64)
 }
 
+fn gallery_position(app: &AppHandle) -> (f64, f64) {
+    app.primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| {
+            let s = m.scale_factor();
+            let size = m.size();
+            let pos = m.position();
+            let sw = size.width as f64 / s;
+            let sh = size.height as f64 / s;
+            let px = pos.x as f64 / s;
+            let py = pos.y as f64 / s;
+            (
+                px + ((sw - GALLERY_WIDTH) / 2.0).max(16.0),
+                py + ((sh - GALLERY_HEIGHT) / 2.0).max(16.0),
+            )
+        })
+        .unwrap_or((120.0, 90.0))
+}
+
 fn fit_panel_window(app: &AppHandle) {
     if let Some(panel) = app.get_webview_window("panel") {
         let _ = panel.set_size(LogicalSize::new(PANEL_WIDTH, current_panel_height(app)));
@@ -164,11 +324,13 @@ fn current_panel_height(app: &AppHandle) -> f64 {
         .try_state::<AppState>()
         .map(|state| state.session_screenshots.lock().unwrap().len())
         .unwrap_or(0);
-    let rows = ((count.max(1) + 1) / 2) as f64;
-    clamp_panel_height(
-        app,
-        PANEL_HEIGHT + (rows - 1.0).max(0.0) * PANEL_THUMBNAIL_ROW_HEIGHT,
-    )
+    if count == 0 {
+        return clamp_panel_height(app, PANEL_HEIGHT);
+    }
+
+    let visible_count = count.min(PANEL_MAX_VISIBLE_SHOTS).max(1);
+    let rows = ((visible_count + 2) / 3) as f64; // 3 per row
+    clamp_panel_height(app, PANEL_FILLED_BASE_HEIGHT + (rows - 1.0).max(0.0) * PANEL_THUMBNAIL_ROW_HEIGHT)
 }
 
 fn clamp_panel_height(app: &AppHandle, height: f64) -> f64 {
@@ -211,14 +373,70 @@ fn hide_panel(app: AppHandle) {
     }
 }
 
+
+#[cfg(target_os = "macos")]
+fn set_dock_icon() {
+    use objc::runtime::Object;
+    use objc::{class, msg_send, sel, sel_impl};
+    let bytes = include_bytes!("../icons/icon.png");
+    unsafe {
+        let ns_data: *mut Object = msg_send![class!(NSData),
+            dataWithBytes: bytes.as_ptr()
+            length: bytes.len()];
+        let ns_image: *mut Object = msg_send![class!(NSImage), alloc];
+        let ns_image: *mut Object = msg_send![ns_image, initWithData: ns_data];
+        let ns_app: *mut Object = msg_send![class!(NSApplication), sharedApplication];
+        let _: () = msg_send![ns_app, setApplicationIconImage: ns_image];
+    }
+}
+
 #[tauri::command]
 fn show_gallery(app: AppHandle) {
+    // Show Dock icon while gallery is open
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+        set_dock_icon();
+    }
+
     if let Some(gallery) = app.get_webview_window("gallery") {
+        let (x, y) = gallery_position(&app);
+        let _ = gallery.set_size(LogicalSize::new(GALLERY_WIDTH, GALLERY_HEIGHT));
+        let _ = gallery.set_position(LogicalPosition::new(x, y));
+        let _ = gallery.set_decorations(false);
+        let _ = gallery.set_resizable(true);
+        let _ = gallery.set_effects(
+            EffectsBuilder::new()
+                .effect(Effect::Popover)
+                .state(EffectState::Active)
+                .radius(30.0)
+                .build(),
+        );
         let _ = gallery.show();
+        let _ = gallery.maximize();
         let _ = gallery.set_focus();
         let _ = app.emit("screenshots-updated", ());
     } else {
         create_gallery_window(&app);
+    }
+}
+
+/// Set NSWindowStyleMaskNonactivatingPanel (bit 7) on the underlying NSWindow.
+/// With this bit set, clicking the panel does NOT make it the key window —
+/// mouse events are delivered directly to the content without the "activation
+/// click" step. This is the same mechanism used by Spotlight, Alfred, and
+/// other always-on-top floating panels.
+#[cfg(target_os = "macos")]
+fn apply_non_activating_style(window: &tauri::WebviewWindow) {
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+    unsafe {
+        if let Ok(ptr) = window.ns_window() {
+            let ns_window = ptr as *mut Object;
+            let current_mask: usize = msg_send![ns_window, styleMask];
+            // NSWindowStyleMaskNonactivatingPanel = 1 << 7 = 128
+            let _: () = msg_send![ns_window, setStyleMask: current_mask | 128usize];
+        }
     }
 }
 
@@ -247,6 +465,7 @@ pub fn create_panel_window(app: &AppHandle) {
         .skip_taskbar(true)
         .focused(false)
         .transparent(true)
+        .accept_first_mouse(true)
         .effects(
             EffectsBuilder::new()
                 .effect(Effect::Popover)
@@ -258,31 +477,56 @@ pub fn create_panel_window(app: &AppHandle) {
         .resizable(false)
         .build()
     {
-        Ok(_) => eprintln!("[panel] created at ({x}, {y})"),
+        Ok(panel_win) => {
+            eprintln!("[panel] created at ({x}, {y})");
+            // Tauri's accept_first_mouse(true) patches WKWebView, but the
+            // VisualEffectView wrapping it may intercept the first click first.
+            // Setting NSWindowStyleMaskNonactivatingPanel (bit 7 = 128) on the
+            // NSWindow prevents the OS from consuming the first click for window
+            // activation, so clicks reach the button immediately.
+            #[cfg(target_os = "macos")]
+            apply_non_activating_style(&panel_win);
+        }
         Err(e) => eprintln!("[panel] create error: {e}"),
     }
 }
 
 fn create_gallery_window(app: &AppHandle) {
-    let _ = WebviewWindowBuilder::new(
+    let (x, y) = gallery_position(app);
+    if let Ok(window) = WebviewWindowBuilder::new(
         app,
         "gallery",
         WebviewUrl::App("index.html".into()),
     )
     .title("TooEasy")
-    .inner_size(1100.0, 700.0)
+    .inner_size(GALLERY_WIDTH, GALLERY_HEIGHT)
+    .position(x, y)
     .decorations(false)
     .resizable(true)
     .transparent(true)
+    .visible(true)
     .effects(
         EffectsBuilder::new()
-            .effect(Effect::HudWindow)
+            .effect(Effect::Popover)
             .state(EffectState::Active)
-            .radius(16.0)
+            .radius(30.0)
             .build(),
     )
-    .shadow(true)
-    .build();
+    .shadow(false)
+    .build()
+    {
+        // When the user closes the gallery: hide it (don't destroy) and remove Dock icon
+        let win2 = window.clone();
+        let app2 = app.clone();
+        window.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = win2.hide();
+                #[cfg(target_os = "macos")]
+                let _ = app2.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
+        });
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -307,8 +551,14 @@ pub fn run() {
             last_active_app: Mutex::new(ActiveApp::default()),
             pending_image: Mutex::new(None),
             session_screenshots: Mutex::new(Vec::new()),
+            is_pro: Mutex::new(license_manager::load_license().is_some()),
+            suppress_watcher_until: Mutex::new(None),
         })
         .setup(|app| {
+            // Hide from Dock — TooEasy lives in the menu bar tray only
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let open_i = MenuItem::with_id(app, "open", "Open TooEasy", true, Some("cmd+o"))?;
             let prefs_i = MenuItem::with_id(app, "prefs", "Preferences", true, Some("cmd+,"))?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit TooEasy", true, Some("cmd+q"))?;
@@ -339,6 +589,43 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // ── App menu bar (File + Edit + Help) ──────────────────────────
+            let file_menu = {
+                let gallery_i = MenuItem::with_id(app, "mb_gallery", "Open Gallery", true, Some("cmd+g"))?;
+                let panel_i   = MenuItem::with_id(app, "mb_panel",   "Show Panel",   true, Some("cmd+p"))?;
+                let sep       = PredefinedMenuItem::separator(app)?;
+                let close_i   = PredefinedMenuItem::close_window(app, Some("Close Window"))?;
+                Submenu::with_id_and_items(app, "file", "File", true, &[&gallery_i, &panel_i, &sep, &close_i])?
+            };
+            let edit_menu = {
+                let undo       = PredefinedMenuItem::undo(app, None)?;
+                let redo       = PredefinedMenuItem::redo(app, None)?;
+                let sep1       = PredefinedMenuItem::separator(app)?;
+                let cut        = PredefinedMenuItem::cut(app, None)?;
+                let copy       = PredefinedMenuItem::copy(app, None)?;
+                let paste      = PredefinedMenuItem::paste(app, None)?;
+                let sep2       = PredefinedMenuItem::separator(app)?;
+                let select_all = PredefinedMenuItem::select_all(app, None)?;
+                Submenu::with_id_and_items(app, "edit", "Edit", true, &[&undo, &redo, &sep1, &cut, &copy, &paste, &sep2, &select_all])?
+            };
+            let help_menu = {
+                let support_i = MenuItem::with_id(app, "mb_support", "Support", true, None::<&str>)?;
+                Submenu::with_id_and_items(app, "help", "Help", true, &[&support_i])?
+            };
+            let menu_bar = Menu::with_items(app, &[&file_menu, &edit_menu, &help_menu])?;
+            app.set_menu(menu_bar)?;
+            app.on_menu_event(|app, event| match event.id().as_ref() {
+                "mb_gallery" => show_gallery(app.clone()),
+                "mb_panel"   => show_panel(app.clone()),
+                "mb_support" => {
+                    let _ = std::process::Command::new("open")
+                        .arg("mailto:ahamedmansoor1988@gmail.com")
+                        .spawn();
+                }
+                _ => {}
+            });
+            // ────────────────────────────────────────────────────────────────
+
             let app_handle = app.handle().clone();
             {
                 let app_handle2 = app_handle.clone();
@@ -360,6 +647,20 @@ pub fn run() {
             create_panel_window(app.handle());
             if let Some(panel) = app.get_webview_window("panel") {
                 let _ = panel.hide();
+            }
+
+            // Attach close handler to the config-created gallery window
+            if let Some(gallery) = app.get_webview_window("gallery") {
+                let win2 = gallery.clone();
+                let app2 = app.handle().clone();
+                gallery.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win2.hide();
+                        #[cfg(target_os = "macos")]
+                        let _ = app2.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
+                });
             }
 
             clipboard_watcher::start(app_handle);
@@ -386,6 +687,14 @@ pub fn run() {
             get_session_screenshots,
             remove_session_screenshot,
             clear_session_screenshots,
+            get_is_pro,
+            set_is_pro,
+            activate_license,
+            deactivate_license,
+            paste_file_to_app,
+            copy_image_file,
+            ocr_image,
+            ocr_data_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

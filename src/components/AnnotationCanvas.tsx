@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ScreenshotItem } from "../lib/tauri";
 
 type Tool = "pen" | "arrow" | "rect" | "text";
@@ -29,16 +30,30 @@ export default function AnnotationCanvas({ screenshot, onClose }: Props) {
   const snapshot = useRef<ImageData | null>(null);
 
   useEffect(() => {
-    const img = new Image();
-    img.onload = () => {
-      imgRef.current = img;
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    };
-    img.src = screenshot.data_url;
-  }, [screenshot.data_url]);
+    let blobUrl = "";
+    fetch(convertFileSrc(screenshot.filepath))
+      .then(r => r.blob())
+      .then(blob => {
+        blobUrl = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          imgRef.current = img;
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          // Size canvas to actual image dimensions
+          canvas.width  = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          if (overlayRef.current) {
+            overlayRef.current.width  = img.naturalWidth;
+            overlayRef.current.height = img.naturalHeight;
+          }
+          canvas.getContext("2d")!.drawImage(img, 0, 0);
+        };
+        img.src = blobUrl;
+      })
+      .catch(console.error);
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
+  }, [screenshot.filepath]);
 
   function getPos(e: React.MouseEvent<HTMLCanvasElement>) {
     const canvas = overlayRef.current!;
@@ -127,14 +142,6 @@ export default function AnnotationCanvas({ screenshot, onClose }: Props) {
     a.click();
   }
 
-  function handleCopy() {
-    const canvas = canvasRef.current!;
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-    });
-  }
-
   const COLORS = ["#FF3B30", "#FF9500", "#FFCC00", "#34C759", "#007AFF", "#FFFFFF", "#000000"];
 
   return (
@@ -213,20 +220,6 @@ export default function AnnotationCanvas({ screenshot, onClose }: Props) {
 
         <div style={{ flex: 1 }} />
 
-        <button
-          onClick={handleCopy}
-          style={{
-            padding: "5px 12px",
-            borderRadius: 6,
-            fontSize: 12,
-            cursor: "pointer",
-            background: "rgba(255,255,255,0.07)",
-            border: "1px solid rgba(255,255,255,0.15)",
-            color: "white",
-          }}
-        >
-          Copy
-        </button>
         <button
           onClick={handleSave}
           style={{

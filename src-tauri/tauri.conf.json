@@ -15,12 +15,19 @@
         "label": "gallery",
         "title": "TooEasy",
         "url": "index.html",
-        "width": 1100,
-        "height": 700,
-        "decorations": true,
-        "transparent": false,
+        "width": 940,
+        "height": 640,
+        "center": true,
+        "decorations": false,
+        "transparent": true,
         "resizable": true,
-        "visible": true
+        "visible": false,
+        "shadow": false,
+        "windowEffects": {
+          "effects": ["popover"],
+          "state": "active",
+          "radius": 30
+        }
       }
     ],
     "security": {
