@@ -230,17 +230,37 @@ fn send_escape() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn send_cmd_v() -> Result<(), String> {
     let status = Command::new("osascript")
         .args(["-e", "tell application \"System Events\" to keystroke \"v\" using command down"])
         .status()
         .map_err(|e| e.to_string())?;
-
     if status.success() {
         Ok(())
     } else {
         Err("Could not paste. macOS may need Accessibility permission for TooEasy.".to_string())
     }
+}
+
+#[cfg(target_os = "windows")]
+fn send_cmd_v() -> Result<(), String> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::*;
+    unsafe {
+        let inputs = [
+            INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_CONTROL, wScan: 0, dwFlags: KEYEVENTF(0), time: 0, dwExtraInfo: 0 } } },
+            INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_V,       wScan: 0, dwFlags: KEYEVENTF(0), time: 0, dwExtraInfo: 0 } } },
+            INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_V,       wScan: 0, dwFlags: KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0 } } },
+            INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_CONTROL, wScan: 0, dwFlags: KEYEVENTF_KEYUP, time: 0, dwExtraInfo: 0 } } },
+        ];
+        let sent = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        if sent == 0 { Err("SendInput failed".to_string()) } else { Ok(()) }
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn send_cmd_v() -> Result<(), String> {
+    Err("Paste not supported on this platform".to_string())
 }
 
 pub fn copy_image(data_url: &str) -> Result<(), String> {
@@ -329,9 +349,24 @@ fn write_png_to_pasteboard(data_url: &str) -> Result<(), String> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn write_png_to_pasteboard(data_url: &str) -> Result<(), String> {
+    let bytes = png_bytes_from_data_url(data_url)?;
+    let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let rgba = img.to_rgba8();
+    let (w, h) = (rgba.width() as usize, rgba.height() as usize);
+    let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    cb.set_image(arboard::ImageData {
+        width: w,
+        height: h,
+        bytes: rgba.into_raw().into(),
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn write_png_to_pasteboard(_data_url: &str) -> Result<(), String> {
-    Err("Pasting to apps is only supported on macOS".to_string())
+    Err("Pasting to apps is only supported on macOS and Windows".to_string())
 }
 
 #[cfg(target_os = "macos")]

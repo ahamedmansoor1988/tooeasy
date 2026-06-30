@@ -57,10 +57,18 @@ pub fn start(app: AppHandle) {
         });
     }
 
-    // Thread 2: FSEvents on Desktop (for Cmd+Shift+4 with thumbnail disabled)
+    // Thread 2: watch screenshots folder (Desktop on macOS, Pictures/Screenshots on Windows)
     std::thread::spawn(move || {
-        let desktop = match std::env::var_os("HOME").map(PathBuf::from) {
-            Some(home) => home.join("Desktop"),
+        let desktop = {
+            #[cfg(target_os = "macos")]
+            { std::env::var_os("HOME").map(PathBuf::from).map(|h| h.join("Desktop")) }
+            #[cfg(target_os = "windows")]
+            { std::env::var_os("USERPROFILE").map(PathBuf::from).map(|h| h.join("Pictures").join("Screenshots")) }
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            { None::<PathBuf> }
+        };
+        let desktop = match desktop {
+            Some(d) => d,
             None => return,
         };
 
@@ -203,7 +211,13 @@ fn pasteboard_change_count() -> i64 {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn pasteboard_change_count() -> i64 {
+    use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
+    unsafe { GetClipboardSequenceNumber() as i64 }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn pasteboard_change_count() -> i64 {
     0
 }
@@ -305,7 +319,21 @@ unsafe fn any_image_to_png(image_data: *mut objc::runtime::Object) -> Option<Vec
     Some(std::slice::from_raw_parts(ptr, len).to_vec())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn read_image_from_pasteboard() -> Option<String> {
+    use base64::Engine;
+    let mut cb = arboard::Clipboard::new().ok()?;
+    let img = cb.get_image().ok()?;
+    let rgba = image::RgbaImage::from_raw(img.width as u32, img.height as u32, img.bytes.to_vec())?;
+    let mut buf = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(rgba)
+        .write_to(&mut buf, image::ImageFormat::Png)
+        .ok()?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+    Some(format!("data:image/png;base64,{b64}"))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn read_image_from_pasteboard() -> Option<String> {
     None
 }

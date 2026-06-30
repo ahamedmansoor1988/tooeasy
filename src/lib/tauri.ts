@@ -98,3 +98,6 @@ export const onClipboardImage = (
 
 export const onScreenshotsUpdated = (handler: () => void) =>
   listen("screenshots-updated", handler);
+
+export const openSystemSettings = (section: "accessibility" | "security"): Promise<void> =>
+  invoke("open_system_settings", { section });

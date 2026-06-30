@@ -10,6 +10,7 @@ import {
   pasteFileToApp,
   copyImageFile,
   showPanel,
+  openSystemSettings,
 } from "../lib/tauri";
 import type { ScreenshotItem } from "../lib/tauri";
 import AnnotationCanvas from "../components/AnnotationCanvas";
@@ -174,21 +175,32 @@ export default function GalleryPage() {
     setBusy(s.filepath); try { await pasteFileToApp(s.filepath, bundleId); } catch {} finally { setBusy(null); }
   }
 
-  const todayCount  = screenshots.filter(s => isToday(s.captured_at)).length;
-  const weekCount   = screenshots.filter(s => isThisWeek(s.captured_at)).length;
-  const monthCount  = screenshots.length;
-  const favsCount   = screenshots.filter(s => favs.has(s.filepath)).length;
+  // Single pass for sidebar counts
+  let todayCount = 0, weekCount = 0, favsCount = 0;
+  for (const s of screenshots) {
+    if (isToday(s.captured_at))    todayCount++;
+    if (isThisWeek(s.captured_at)) weekCount++;
+    if (favs.has(s.filepath))      favsCount++;
+  }
+  const monthCount = screenshots.length;
 
-  const filtered = sortItems(screenshots.filter(s => {
-    const haystack = `${s.filename} ${smartTitle(s)} ${sourceFromFilename(s.filename)} ${s.captured_at}`.toLowerCase();
-    if (search && !haystack.includes(search.toLowerCase())) return false;
-    if (filter === "today")       return isToday(s.captured_at);
-    if (filter === "week")        return isThisWeek(s.captured_at);
-    if (filter === "month")       return isThisMonth(s.captured_at);
-    if (filter === "favourites")  return favs.has(s.filepath);
-    return true;
-  }), sort);
-  const bySource = sourceGroups(screenshots);
+  const filtered = React.useMemo(() => {
+    const lowerSearch = search.toLowerCase();
+    return sortItems(screenshots.filter(s => {
+      if (search) {
+        const source = sourceFromFilename(s.filename);
+        const haystack = `${s.filename} ${smartTitle(s)} ${source} ${s.captured_at}`.toLowerCase();
+        if (!haystack.includes(lowerSearch)) return false;
+      }
+      if (filter === "today")       return isToday(s.captured_at);
+      if (filter === "week")        return isThisWeek(s.captured_at);
+      if (filter === "month")       return isThisMonth(s.captured_at);
+      if (filter === "favourites")  return favs.has(s.filepath);
+      return true;
+    }), sort);
+  }, [screenshots, search, filter, sort, favs]);
+
+  const bySource = React.useMemo(() => sourceGroups(screenshots), [screenshots]);
 
   if (!onboarded) {
     return <Onboarding onDone={() => { localStorage.setItem("onboarded","1"); setOnboarded(true); }} />;
@@ -1462,20 +1474,106 @@ function EmptyState({ message }: { message?: string }) {
 // ── Onboarding ────────────────────────────────────────────────────────────────
 function Onboarding({ onDone }: { onDone: ()=>void }) {
   const [step, setStep] = useState(0);
-  const steps = [
+
+  const steps: { title: string; subtitle: string; custom: React.ReactNode; nextLabel?: string }[] = [
+    {
+      title: "Welcome to TooEasy",
+      subtitle: "Capture your screen and paste directly into Claude, ChatGPT, or Figma — in one keystroke.",
+      custom: (
+        <div style={{ display:"flex", justifyContent:"center", gap:16, marginTop:8 }}>
+          {["ri-sparkling-2-fill","ri-openai-fill","ri-figma-fill"].map((icon,i) => (
+            <div key={i} style={{ width:44, height:44, borderRadius:12, background:"#f3f4f6",
+              display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <i className={icon} style={{ fontSize:22, color:"#6b7280" }} />
+            </div>
+          ))}
+        </div>
+      ),
+    },
+    {
+      title: "One-time setup",
+      subtitle: "TooEasy needs Accessibility access to paste screenshots into other apps.",
+      nextLabel: "I've allowed it",
+      custom: (
+        <div style={{ marginTop:4 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:16 }}>
+            {[
+              { n:"1", text:"Open System Settings → Privacy & Security → Accessibility" },
+              { n:"2", text:"Toggle TooEasy on" },
+              { n:"3", text:"Enter your Mac password when prompted" },
+            ].map(row => (
+              <div key={row.n} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+                <div style={{ width:22, height:22, borderRadius:999, background:"#6366f1",
+                  display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1 }}>
+                  <span style={{ fontSize:11, fontWeight:700, color:"#fff" }}>{row.n}</span>
+                </div>
+                <span style={{ fontSize:13, color:"#374151", lineHeight:1.5 }}>{row.text}</span>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => openSystemSettings("accessibility").catch(()=>{})}
+            style={{ width:"100%", height:40, borderRadius:10, background:"#6366f1",
+              border:"none", color:"#fff", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+            Open System Settings →
+          </button>
+        </div>
+      ),
+    },
     {
       title: "Two ways to capture",
-      custom: <CaptureOptions />,
+      subtitle: "Use whichever shortcut fits your flow.",
+      custom: (
+        <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:4 }}>
+          {[
+            { keys:["⌃","⌘","⇧","4"], label:"Copy to clipboard", badge:"Instant",
+              desc:"TooEasy catches it immediately." },
+            { keys:["⌘","⇧","4"], label:"Save to Desktop", badge:"~5 sec",
+              desc:"TooEasy picks it up within seconds." },
+          ].map(opt => (
+            <div key={opt.label} style={{ background:"#f9f9fb", borderRadius:12, padding:"12px 14px" }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4 }}>
+                <div style={{ display:"flex", gap:4 }}>
+                  {opt.keys.map(k => (
+                    <kbd key={k} style={{ padding:"3px 7px", borderRadius:6,
+                      background:"#fff", border:"1px solid rgba(0,0,0,0.12)",
+                      fontSize:12, fontWeight:600, color:"#1c1c1e", fontFamily:"inherit",
+                      boxShadow:"0 1px 0 rgba(0,0,0,0.15)" }}>{k}</kbd>
+                  ))}
+                </div>
+                <span style={{ fontSize:10, fontWeight:600, color:"#6b7280",
+                  background:"#f3f4f6", padding:"2px 8px", borderRadius:999,
+                  letterSpacing:"0.04em", textTransform:"uppercase" }}>{opt.badge}</span>
+              </div>
+              <div style={{ fontSize:13, fontWeight:600, color:"#1c1c1e", marginBottom:2 }}>{opt.label}</div>
+              <div style={{ fontSize:12, color:"#9ca3af" }}>{opt.desc}</div>
+            </div>
+          ))}
+        </div>
+      ),
     },
     {
-      title: "Bundle & paste",
-      body: "Take multiple screenshots, select them all, then send to Claude, ChatGPT, or Figma in one click.",
-    },
-    {
-      title: "Saved to your gallery",
-      body: "Every screenshot is saved. Browse, annotate, and re-send any capture from the gallery.",
+      title: "You're all set!",
+      subtitle: "Take a screenshot, watch the panel appear, and paste anywhere with one click.",
+      nextLabel: "Open TooEasy",
+      custom: (
+        <div style={{ display:"flex", flexDirection:"column", gap:10, marginTop:8 }}>
+          {[
+            { icon:"ri-screenshot-fill", label:"Take a screenshot" },
+            { icon:"ri-checkbox-multiple-fill", label:"Select & bundle shots" },
+            { icon:"ri-send-plane-fill", label:"Paste into any app" },
+          ].map(row => (
+            <div key={row.label} style={{ display:"flex", alignItems:"center", gap:12,
+              background:"#f9f9fb", borderRadius:12, padding:"10px 14px" }}>
+              <i className={row.icon} style={{ fontSize:18, color:"#6366f1" }} />
+              <span style={{ fontSize:13, fontWeight:500, color:"#1c1c1e" }}>{row.label}</span>
+            </div>
+          ))}
+        </div>
+      ),
     },
   ];
+
   const s = steps[step];
   const isLast = step === steps.length - 1;
 
@@ -1484,42 +1582,42 @@ function Onboarding({ onDone }: { onDone: ()=>void }) {
       display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32 }}>
       <div style={{ width:400 }}>
         {/* Logo */}
-        <div style={{ textAlign:"center", marginBottom:28 }}>
-          <div style={{ width:60, height:60, borderRadius:16, margin:"0 auto 12px",
-            background:"rgba(255,255,255,0.44)",
+        <div style={{ textAlign:"center", marginBottom:24 }}>
+          <div style={{ width:56, height:56, borderRadius:16, margin:"0 auto 10px",
+            background:"linear-gradient(135deg,#6366f1,#8b5cf6)",
             display:"flex", alignItems:"center", justifyContent:"center",
-            boxShadow:"0 6px 24px rgba(79,107,240,0.40)" }}>
-            <i className="ri-camera-fill" style={{ fontSize:28, color:"white", WebkitTextFillColor:"white" }} />
+            boxShadow:"0 6px 24px rgba(99,102,241,0.40)" }}>
+            <i className="ri-camera-fill" style={{ fontSize:26, color:"white", WebkitTextFillColor:"white" }} />
           </div>
-          <div style={{ fontSize:22, fontWeight:600, color:"#1c1c1e" }}>TooEasy</div>
+          <div style={{ fontSize:13, fontWeight:600, color:"#9ca3af", letterSpacing:"0.06em", textTransform:"uppercase" }}>TooEasy</div>
         </div>
 
         {/* Card */}
         <div key={step} style={{ background:"#fff", borderRadius:20,
-          padding:"28px 24px", marginBottom:20,
+          padding:"24px 22px", marginBottom:18,
           boxShadow:"0 4px 24px rgba(0,0,0,0.09)",
-          animation:"fade-up 260ms cubic-bezier(0.34,1.56,0.64,1) forwards" }}>
-          <h2 style={{ fontSize:18, fontWeight:600, color:"#1c1c1e", marginBottom:10 }}>{s.title}</h2>
-          {s.body && <p style={{ fontSize:14, color:"#6b7280", lineHeight:1.65 }}>{s.body}</p>}
+          animation:"fade-up 240ms cubic-bezier(0.34,1.56,0.64,1) forwards" }}>
+          <h2 style={{ fontSize:17, fontWeight:700, color:"#1c1c1e", margin:"0 0 6px" }}>{s.title}</h2>
+          <p style={{ fontSize:13, color:"#6b7280", lineHeight:1.6, margin:"0 0 4px" }}>{s.subtitle}</p>
           {s.custom}
         </div>
 
         {/* Dots */}
-        <div style={{ display:"flex", justifyContent:"center", gap:6, marginBottom:16 }}>
+        <div style={{ display:"flex", justifyContent:"center", gap:6, marginBottom:14 }}>
           {steps.map((_,i) => (
             <div key={i} style={{ width: i===step ? 18 : 6, height:6, borderRadius:999,
-              background: i===step ? "#ffffff" : "#d1d5db",
+              background: i===step ? "#6366f1" : "#d1d5db",
               transition:"all 280ms cubic-bezier(0.34,1.56,0.64,1)" }} />
           ))}
         </div>
 
         {/* CTA */}
         <button onClick={() => isLast ? onDone() : setStep(step+1)} style={{
-          width:"100%", height:48, borderRadius:12,
-          background:"#ffffff", border:"1px solid rgba(255,255,255,0.64)",
-          color:"#1c1c1e", fontSize:15, fontWeight:600, cursor:"pointer",
-          boxShadow:"0 4px 16px rgba(79,107,240,0.40)",
-        }}>{isLast ? "Get started" : "Continue"}</button>
+          width:"100%", height:46, borderRadius:12,
+          background:"linear-gradient(135deg,#6366f1,#8b5cf6)",
+          border:"none", color:"#fff", fontSize:15, fontWeight:600, cursor:"pointer",
+          boxShadow:"0 4px 16px rgba(99,102,241,0.35)",
+        }}>{s.nextLabel ?? (isLast ? "Get started" : "Continue")}</button>
 
         {step > 0 && (
           <button onClick={() => setStep(step-1)} style={{
@@ -1527,40 +1625,6 @@ function Onboarding({ onDone }: { onDone: ()=>void }) {
             color:"#9ca3af", fontSize:13, cursor:"pointer" }}>Back</button>
         )}
       </div>
-    </div>
-  );
-}
-
-function CaptureOptions() {
-  const opts = [
-    { keys:["⌃","⌘","⇧","4"], label:"Copy to clipboard", badge:"Instant", badgeColor:"#ffffff",
-      desc:"Caught by TooEasy immediately." },
-    { keys:["⌘","⇧","4"], label:"Save to Desktop", badge:"~5 sec delay", badgeColor:"#9ca3af",
-      desc:"TooEasy picks it up within a few seconds." },
-  ];
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-      {opts.map(opt => (
-        <div key={opt.label} style={{ background:"#f9f9fb", borderRadius:12, padding:"12px 14px" }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
-            <div style={{ display:"flex", gap:4 }}>
-              {opt.keys.map(k => (
-                <kbd key={k} style={{ padding:"3px 7px", borderRadius:6,
-                  background:"#fff", border:"1px solid rgba(0,0,0,0.12)",
-                  fontSize:13, fontWeight:600, color:"#1c1c1e", fontFamily:"inherit",
-                  boxShadow:"0 1px 0 rgba(0,0,0,0.15)" }}>{k}</kbd>
-              ))}
-            </div>
-            <span style={{ fontSize:10, fontWeight:600, color:opt.badgeColor,
-              background:`${opt.badgeColor}18`, border:`1px solid ${opt.badgeColor}30`,
-              padding:"2px 8px", borderRadius:999, letterSpacing:"0.04em", textTransform:"uppercase" }}>
-              {opt.badge}
-            </span>
-          </div>
-          <div style={{ fontSize:13, fontWeight:600, color:"#1c1c1e", marginBottom:2 }}>{opt.label}</div>
-          <div style={{ fontSize:12, color:"#9ca3af" }}>{opt.desc}</div>
-        </div>
-      ))}
     </div>
   );
 }

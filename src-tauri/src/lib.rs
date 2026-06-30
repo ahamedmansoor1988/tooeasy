@@ -97,7 +97,7 @@ const PANEL_HEIGHT: f64 = 458.0;
 const PANEL_MIN_HEIGHT: f64 = PANEL_HEIGHT;
 const PANEL_FILLED_BASE_HEIGHT: f64 = 476.0;
 const PANEL_THUMBNAIL_ROW_HEIGHT: f64 = 80.0;
-const PANEL_MAX_VISIBLE_SHOTS: usize = 12;
+const PANEL_MAX_VISIBLE_SHOTS: usize = 12; // = PRO_LIMIT (defined below)
 const GALLERY_WIDTH: f64 = 940.0;
 const GALLERY_HEIGHT: f64 = 640.0;
 
@@ -405,11 +405,18 @@ fn show_gallery(app: AppHandle) {
         let _ = gallery.set_position(LogicalPosition::new(x, y));
         let _ = gallery.set_decorations(false);
         let _ = gallery.set_resizable(true);
+        #[cfg(target_os = "macos")]
         let _ = gallery.set_effects(
             EffectsBuilder::new()
                 .effect(Effect::Popover)
                 .state(EffectState::Active)
                 .radius(30.0)
+                .build(),
+        );
+        #[cfg(target_os = "windows")]
+        let _ = gallery.set_effects(
+            EffectsBuilder::new()
+                .effect(Effect::Acrylic)
                 .build(),
         );
         let _ = gallery.show();
@@ -440,6 +447,28 @@ fn apply_non_activating_style(window: &tauri::WebviewWindow) {
     }
 }
 
+#[tauri::command]
+fn open_system_settings(section: String) {
+    #[cfg(target_os = "macos")]
+    {
+        let url = match section.as_str() {
+            "accessibility" => "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "security"      => "x-apple.systempreferences:com.apple.preference.security",
+            _               => "x-apple.systempreferences:",
+        };
+        let _ = std::process::Command::new("open").arg(url).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let url = match section.as_str() {
+            "accessibility" => "ms-settings:easeofaccess",
+            "security"      => "ms-settings:privacy",
+            _               => "ms-settings:",
+        };
+        let _ = std::process::Command::new("explorer").arg(url).spawn();
+    }
+}
+
 pub fn create_panel_window(app: &AppHandle) {
     if let Some(panel) = app.get_webview_window("panel") {
         fit_panel_window(app);
@@ -456,7 +485,7 @@ pub fn create_panel_window(app: &AppHandle) {
 
     let (x, y) = panel_position(app);
 
-    match WebviewWindowBuilder::new(app, "panel", panel_url)
+    let panel_builder = WebviewWindowBuilder::new(app, "panel", panel_url)
         .title("TooEasy")
         .inner_size(PANEL_WIDTH, PANEL_HEIGHT)
         .position(x, y)
@@ -466,19 +495,25 @@ pub fn create_panel_window(app: &AppHandle) {
         .focused(false)
         .transparent(true)
         .accept_first_mouse(true)
-        .effects(
-            EffectsBuilder::new()
-                .effect(Effect::Popover)
-                .state(EffectState::Active)
-                .radius(30.0)
-                .build(),
-        )
         .shadow(true)
-        .resizable(false)
-        .build()
+        .resizable(false);
+    #[cfg(target_os = "macos")]
+    let panel_builder = panel_builder.effects(
+        EffectsBuilder::new()
+            .effect(Effect::Popover)
+            .state(EffectState::Active)
+            .radius(30.0)
+            .build(),
+    );
+    #[cfg(target_os = "windows")]
+    let panel_builder = panel_builder.effects(
+        EffectsBuilder::new()
+            .effect(Effect::Acrylic)
+            .build(),
+    );
+    match panel_builder.build()
     {
         Ok(panel_win) => {
-            eprintln!("[panel] created at ({x}, {y})");
             // Tauri's accept_first_mouse(true) patches WKWebView, but the
             // VisualEffectView wrapping it may intercept the first click first.
             // Setting NSWindowStyleMaskNonactivatingPanel (bit 7 = 128) on the
@@ -493,7 +528,7 @@ pub fn create_panel_window(app: &AppHandle) {
 
 fn create_gallery_window(app: &AppHandle) {
     let (x, y) = gallery_position(app);
-    if let Ok(window) = WebviewWindowBuilder::new(
+    let gallery_builder = WebviewWindowBuilder::new(
         app,
         "gallery",
         WebviewUrl::App("index.html".into()),
@@ -505,15 +540,22 @@ fn create_gallery_window(app: &AppHandle) {
     .resizable(true)
     .transparent(true)
     .visible(true)
-    .effects(
+    .shadow(false);
+    #[cfg(target_os = "macos")]
+    let gallery_builder = gallery_builder.effects(
         EffectsBuilder::new()
             .effect(Effect::Popover)
             .state(EffectState::Active)
             .radius(30.0)
             .build(),
-    )
-    .shadow(false)
-    .build()
+    );
+    #[cfg(target_os = "windows")]
+    let gallery_builder = gallery_builder.effects(
+        EffectsBuilder::new()
+            .effect(Effect::Acrylic)
+            .build(),
+    );
+    if let Ok(window) = gallery_builder.build()
     {
         // When the user closes the gallery: hide it (don't destroy) and remove Dock icon
         let win2 = window.clone();
@@ -618,9 +660,10 @@ pub fn run() {
                 "mb_gallery" => show_gallery(app.clone()),
                 "mb_panel"   => show_panel(app.clone()),
                 "mb_support" => {
-                    let _ = std::process::Command::new("open")
-                        .arg("mailto:ahamedmansoor1988@gmail.com")
-                        .spawn();
+                    #[cfg(target_os = "macos")]
+                    let _ = std::process::Command::new("open").arg("mailto:ahamedmansoor1988@gmail.com").spawn();
+                    #[cfg(target_os = "windows")]
+                    let _ = std::process::Command::new("explorer").arg("mailto:ahamedmansoor1988@gmail.com").spawn();
                 }
                 _ => {}
             });
@@ -695,6 +738,7 @@ pub fn run() {
             copy_image_file,
             ocr_image,
             ocr_data_url,
+            open_system_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
