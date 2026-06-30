@@ -15,21 +15,19 @@ use tauri::{
     AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
 };
 
-// ── macOS Vision OCR ──────────────────────────────────────────────────────────
-#[repr(C)]
-#[derive(Copy, Clone)]
-struct CGPoint { x: f64, y: f64 }
-#[repr(C)]
-#[derive(Copy, Clone)]
-struct CGSize  { width: f64, height: f64 }
-#[repr(C)]
-#[derive(Copy, Clone)]
-struct CGRect  { origin: CGPoint, size: CGSize }
-
+// ── OCR ───────────────────────────────────────────────────────────────────────
 #[derive(serde::Serialize)]
 struct OcrLine { text: String, y: f64, h: f64 }
 
+#[cfg(target_os = "macos")]
+#[repr(C)] #[derive(Copy, Clone)] struct CGPoint { x: f64, y: f64 }
+#[cfg(target_os = "macos")]
+#[repr(C)] #[derive(Copy, Clone)] struct CGSize  { width: f64, height: f64 }
+#[cfg(target_os = "macos")]
+#[repr(C)] #[derive(Copy, Clone)] struct CGRect  { origin: CGPoint, size: CGSize }
+
 #[tauri::command]
+#[cfg(target_os = "macos")]
 fn ocr_image(filepath: String) -> Result<Vec<OcrLine>, String> {
     use objc::runtime::Object;
     use objc::{class, msg_send, sel, sel_impl};
@@ -37,27 +35,22 @@ fn ocr_image(filepath: String) -> Result<Vec<OcrLine>, String> {
         let c = std::ffi::CString::new(filepath).map_err(|e| e.to_string())?;
         let ns_path: *mut Object = msg_send![class!(NSString), stringWithUTF8String: c.as_ptr()];
         let file_url: *mut Object = msg_send![class!(NSURL), fileURLWithPath: ns_path];
-
         let request: *mut Object = msg_send![class!(VNRecognizeTextRequest), new];
-        let _: () = msg_send![request, setRecognitionLevel: 0isize]; // Accurate
+        let _: () = msg_send![request, setRecognitionLevel: 0isize];
         let opts: *mut Object  = msg_send![class!(NSDictionary), dictionary];
         let handler: *mut Object = msg_send![class!(VNImageRequestHandler), alloc];
         let handler: *mut Object = msg_send![handler, initWithURL: file_url options: opts];
-
         let arr: *mut Object = msg_send![class!(NSMutableArray), new];
         let _: () = msg_send![arr, addObject: request];
         let _: bool = msg_send![handler, performRequests: arr error: std::ptr::null_mut::<*mut Object>()];
-
         let results: *mut Object = msg_send![request, results];
         if results.is_null() { return Ok(vec![]); }
         let count: usize = msg_send![results, count];
-
         let mut lines: Vec<OcrLine> = Vec::new();
         for i in 0..count {
             let obs: *mut Object  = msg_send![results, objectAtIndex: i];
             let bbox: CGRect      = msg_send![obs, boundingBox];
-            let y_top = (1.0 - bbox.origin.y - bbox.size.height).max(0.0);
-
+            let y_top = (1.0_f64 - bbox.origin.y - bbox.size.height).max(0.0_f64);
             let cands: *mut Object = msg_send![obs, topCandidates: 1usize];
             let cc: usize          = msg_send![cands, count];
             if cc == 0 { continue; }
@@ -72,19 +65,21 @@ fn ocr_image(filepath: String) -> Result<Vec<OcrLine>, String> {
         Ok(lines)
     }
 }
+
+#[tauri::command]
+#[cfg(not(target_os = "macos"))]
+fn ocr_image(_filepath: String) -> Result<Vec<OcrLine>, String> {
+    Ok(vec![])
+}
+
 #[tauri::command]
 fn ocr_data_url(data_url: String) -> Result<Vec<OcrLine>, String> {
     use base64::{engine::general_purpose, Engine};
-    // Strip "data:image/...;base64," prefix
-    let b64 = data_url
-        .splitn(2, ',')
-        .nth(1)
-        .ok_or("Invalid data URL")?;
+    let b64 = data_url.splitn(2, ',').nth(1).ok_or("Invalid data URL")?;
     let bytes = general_purpose::STANDARD.decode(b64).map_err(|e| e.to_string())?;
-
-    // Write to a temp file, run OCR, then delete
-    let tmp_path = std::env::temp_dir().join(format!("te_ocr_{}.png", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
+    let tmp_path = std::env::temp_dir().join(format!("te_ocr_{}.png",
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default().as_nanos()));
     std::fs::write(&tmp_path, &bytes).map_err(|e| e.to_string())?;
     let result = ocr_image(tmp_path.to_string_lossy().into_owned());
     let _ = std::fs::remove_file(&tmp_path);
