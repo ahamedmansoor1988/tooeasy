@@ -328,7 +328,7 @@ export default function GalleryPage() {
               const locked = item.pro && !isPro;
               return (
                 <button key={item.id}
-                  onClick={() => { if (locked) { void goUpgrade(); return; } setFilter(item.id as Filter); setView("gallery"); }}
+                  onClick={() => { if (locked) { void goUpgrade(); return; } setSearch(""); setFilter(item.id as Filter); setView("gallery"); }}
                   className={`sidebar-item ${view==="gallery" && filter===item.id ? "active" : ""}`}
                   style={{ width:"100%", textAlign:"left", border:"none", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:8, cursor:"pointer", fontFamily:"inherit", marginBottom:2, opacity: locked ? 0.55 : 1 }}>
                   <Ri icon={item.icon} gradient={item.gradient} size={15} />

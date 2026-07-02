@@ -692,9 +692,25 @@ pub fn run() {
                     loop {
                         std::thread::sleep(std::time::Duration::from_millis(200));
                         let current = active_app_detector::get_frontmost_app();
-                        if !current.bundle_id.contains("tooeasy")
+                        let bundle_lower = current.bundle_id.to_lowercase();
+                        // Skip TooEasy itself and transient system UI (permission
+                        // dialogs, notifications, screenshot chrome) so screenshots
+                        // are attributed to the user's real app, not a system prompt.
+                        let is_system_ui = [
+                            "usernotificationcenter",
+                            "notificationcenter",
+                            "universalaccess",
+                            "screencaptureui",
+                            "systemuiserver",
+                            "coreservicesuiagent",
+                            "loginwindow",
+                        ]
+                        .iter()
+                        .any(|p| bundle_lower.contains(p));
+                        if !bundle_lower.contains("tooeasy")
                             && !current.name.contains("TooEasy")
                             && !current.bundle_id.is_empty()
+                            && !is_system_ui
                         {
                             let s: State<AppState> = app_handle2.state();
                             *s.last_active_app.lock().unwrap() = current;
