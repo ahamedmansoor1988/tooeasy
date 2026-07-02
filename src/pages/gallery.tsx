@@ -16,6 +16,7 @@ import {
 import type { ScreenshotItem } from "../lib/tauri";
 import AnnotationCanvas from "../components/AnnotationCanvas";
 import tooeasyWordmarkUrl from "../assets/logos/tooeasy-wordmark.svg";
+import tooeasyIconUrl from "../assets/logos/tooeasy-icon.svg";
 import claudeLogoUrl from "../assets/logos/claude.svg";
 import chatgptLogoUrl from "../assets/logos/chatgpt.svg";
 import figmaLogoUrl from "../assets/logos/figma.svg";
@@ -42,6 +43,9 @@ type SortMode = "newest" | "oldest" | "source";
 // On macOS the gallery window uses the native overlay title bar (real traffic
 // lights), so the custom controls are only rendered on other platforms.
 const isMac = navigator.userAgent.includes("Mac");
+
+const PURCHASE_URL = "https://477706573435.gumroad.com/l/bkbxux";
+const goUpgrade = () => import("@tauri-apps/plugin-opener").then(m => m.openUrl(PURCHASE_URL)).catch(() => {});
 
 function isToday(d: string) {
   return d.startsWith(new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }));
@@ -139,6 +143,7 @@ export default function GalleryPage() {
   const [displayName, setDisplayName] = useState(() => localStorage.getItem("te_display_name") ?? "MANS");
   const [avatarColor, setAvatarColor] = useState(() => localStorage.getItem("te_avatar_color") ?? "#64748b");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isPro, setIsPro] = useState(false);
 
   function toggleFav(filepath: string) {
     setFavs(prev => {
@@ -161,10 +166,13 @@ export default function GalleryPage() {
   useEffect(() => {
     refresh();
     getLastActiveApp().then(setActiveApp).catch(() => {});
+    const loadPro = () => import("../lib/tauri").then(m => m.getIsPro()).then(setIsPro).catch(() => {});
+    loadPro();
     let u: (()=>void)|null = null;
     onScreenshotsUpdated(refresh).then(fn => { u = fn; });
-    window.addEventListener("focus", refresh);
-    return () => { u?.(); window.removeEventListener("focus", refresh); };
+    const onFocus = () => { refresh(); loadPro(); };
+    window.addEventListener("focus", onFocus);
+    return () => { u?.(); window.removeEventListener("focus", onFocus); };
   }, []);
 
   async function handleEdit(fp: string) {
@@ -291,17 +299,19 @@ export default function GalleryPage() {
           borderRight:"1px solid rgba(255,255,255,0.28)",
           display:"flex", flexDirection:"column",
         }}>
-          {/* Search */}
+          {/* Search — Pro feature */}
           <div style={{ marginBottom:10 }}>
-            <div style={{ position:"relative" }}>
-              <Ri icon="ri-search-line" gradient="linear-gradient(135deg,#6b7280,#111827)" size={13}
+            <div style={{ position:"relative" }} onClick={isPro ? undefined : goUpgrade}>
+              <Ri icon={isPro ? "ri-search-line" : "ri-lock-fill"} gradient="linear-gradient(135deg,#6b7280,#111827)" size={13}
                 style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)" }} />
               <input value={search} onChange={e => { setSearch(e.target.value); setView("gallery"); }}
-                placeholder="Search…"
+                placeholder={isPro ? "Search…" : "Search — Pro"}
+                readOnly={!isPro}
                 style={{ width:"100%", height:32, paddingLeft:30, paddingRight:10,
                   background:"rgba(255,255,255,0.30)", border:"1px solid rgba(255,255,255,0.44)",
                   borderRadius:8, fontSize:12.5, color:"var(--gallery-text-1)", outline:"none",
                   boxShadow:"inset 0 1px 0 rgba(255,255,255,0.58)",
+                  cursor: isPro ? "text" : "pointer",
                   boxSizing:"border-box" as const }} />
             </div>
           </div>
@@ -309,28 +319,40 @@ export default function GalleryPage() {
           {/* Nav items */}
           <div style={{ flex:1, overflowY:"auto" }}>
             {[
-              { id:"all",        label:"All Screenshots", count:monthCount,  icon:"ri-image-fill",       gradient:"linear-gradient(135deg,#4b5563,#111827)" },
-              { id:"today",      label:"Today",           count:todayCount,  icon:"ri-sun-fill",         gradient:"linear-gradient(135deg,#f59e0b,#f97316)" },
-              { id:"week",       label:"This Week",       count:weekCount,   icon:"ri-calendar-2-fill",  gradient:"linear-gradient(135deg,#4b5563,#111827)" },
-              { id:"month",      label:"This Month",      count:monthCount,  icon:"ri-calendar-fill",    gradient:"linear-gradient(135deg,#4b5563,#111827)" },
-              { id:"favourites", label:"Favourites",      count:favsCount,   icon:"ri-star-fill",        gradient:"linear-gradient(135deg,#f59e0b,#eab308)" },
-            ].map(item => (
-              <button key={item.id}
-                onClick={() => { setFilter(item.id as Filter); setView("gallery"); }}
-                className={`sidebar-item ${view==="gallery" && filter===item.id ? "active" : ""}`}
-                style={{ width:"100%", textAlign:"left", border:"none", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:8, cursor:"pointer", fontFamily:"inherit", marginBottom:2 }}>
-                <Ri icon={item.icon} gradient={item.gradient} size={15} />
-                <span style={{ flex:1, fontSize:13, fontWeight:500 }}>{item.label}</span>
-                <span style={{ fontSize:12, color:"var(--gallery-text-3)" }}>{item.count}</span>
-              </button>
-            ))}
+              { id:"all",        label:"All Screenshots", count:monthCount,  icon:"ri-image-fill",       gradient:"linear-gradient(135deg,#4b5563,#111827)", pro:false },
+              { id:"today",      label:"Today",           count:todayCount,  icon:"ri-sun-fill",         gradient:"linear-gradient(135deg,#f59e0b,#f97316)", pro:true },
+              { id:"week",       label:"This Week",       count:weekCount,   icon:"ri-calendar-2-fill",  gradient:"linear-gradient(135deg,#4b5563,#111827)", pro:true },
+              { id:"month",      label:"This Month",      count:monthCount,  icon:"ri-calendar-fill",    gradient:"linear-gradient(135deg,#4b5563,#111827)", pro:true },
+              { id:"favourites", label:"Favourites",      count:favsCount,   icon:"ri-star-fill",        gradient:"linear-gradient(135deg,#f59e0b,#eab308)", pro:true },
+            ].map(item => {
+              const locked = item.pro && !isPro;
+              return (
+                <button key={item.id}
+                  onClick={() => { if (locked) { void goUpgrade(); return; } setFilter(item.id as Filter); setView("gallery"); }}
+                  className={`sidebar-item ${view==="gallery" && filter===item.id ? "active" : ""}`}
+                  style={{ width:"100%", textAlign:"left", border:"none", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:8, cursor:"pointer", fontFamily:"inherit", marginBottom:2, opacity: locked ? 0.55 : 1 }}>
+                  <Ri icon={item.icon} gradient={item.gradient} size={15} />
+                  <span style={{ flex:1, fontSize:13, fontWeight:500 }}>{item.label}</span>
+                  {locked
+                    ? <Ri icon="ri-lock-fill" gradient="linear-gradient(135deg,#9ca3af,#6b7280)" size={12} />
+                    : <span style={{ fontSize:12, color:"var(--gallery-text-3)" }}>{item.count}</span>}
+                </button>
+              );
+            })}
 
             <div style={{ height:1, background:"rgba(255,255,255,0.34)", margin:"10px 0" }} />
 
             <div style={{ padding:"2px 6px 6px", fontSize:11, fontWeight:500, color:"var(--gallery-text-3)", textTransform:"uppercase", letterSpacing:"0.06em" }}>
               Sources
             </div>
-            {bySource.length === 0 ? (
+            {!isPro ? (
+              <button onClick={() => { void goUpgrade(); }}
+                className="sidebar-item"
+                style={{ width:"100%", textAlign:"left", border:"none", display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:8, cursor:"pointer", fontFamily:"inherit", marginBottom:2, opacity:0.55 }}>
+                <Ri icon="ri-lock-fill" gradient="linear-gradient(135deg,#9ca3af,#6b7280)" size={15} />
+                <span style={{ flex:1, fontSize:13, fontWeight:500 }}>Unlock with Pro</span>
+              </button>
+            ) : bySource.length === 0 ? (
               <div style={{ fontSize:12, color:"var(--gallery-text-3)", padding:"4px 10px" }}>Appear after captures.</div>
             ) : bySource.map(item => (
               <button key={item.label}
@@ -437,7 +459,7 @@ export default function GalleryPage() {
                     style={{ border:"none", outline:"none", background:"transparent", fontFamily:"inherit", fontSize:12.5, color:"var(--gallery-text-1)", cursor:"pointer" }}>
                     <option value="newest">Newest</option>
                     <option value="oldest">Oldest</option>
-                    <option value="source">Source</option>
+                    {isPro && <option value="source">Source</option>}
                   </select>
                 </label>
               </div>
@@ -453,7 +475,7 @@ export default function GalleryPage() {
                   <ScreenshotCard key={s.filepath} screenshot={s}
                     busy={busyPath===s.filepath}
                     isFav={favs.has(s.filepath)}
-                    onToggleFav={() => toggleFav(s.filepath)}
+                    onToggleFav={() => { if (!isPro) { void goUpgrade(); return; } toggleFav(s.filepath); }}
                     onCopy={() => handleCopy(s)}
                     onPaste={() => handlePaste(s)}
                     onTrash={() => handleTrash(s)}
@@ -472,6 +494,7 @@ export default function GalleryPage() {
       {preview && (
         <ScreenshotPreview
           screenshot={preview}
+          isPro={isPro}
           onClose={() => setPreview(null)}
           onMoveToPanel={async () => {
             await copyImageFile(preview.filepath).catch(() => {});
@@ -633,8 +656,9 @@ function WindowControls() {
   );
 }
 
-function ScreenshotPreview({ screenshot, onClose, onMoveToPanel, onAnnotate, onOpen, onTrash }: {
+function ScreenshotPreview({ screenshot, isPro, onClose, onMoveToPanel, onAnnotate, onOpen, onTrash }: {
   screenshot: ScreenshotItem;
+  isPro: boolean;
   onClose: ()=>void;
   onMoveToPanel: ()=>void;
   onAnnotate: ()=>void;
@@ -652,84 +676,6 @@ function ScreenshotPreview({ screenshot, onClose, onMoveToPanel, onAnnotate, onO
   const [pdfMsg, setPdfMsg]           = useState<string|null>(null);
   const [aiError, setAiError]         = useState<string|null>(null);
   const [naturalSize, setNaturalSize] = useState({ w: 1, h: 1 });
-
-  async function callVision(prompt: string): Promise<string> {
-    const provider = (localStorage.getItem("te_ai_provider") ?? "anthropic") as AiProvider;
-    const keyMap: Record<AiProvider, string|null> = {
-      anthropic: localStorage.getItem("te_ai_key_anthropic"),
-      openai:    localStorage.getItem("te_ai_key_openai"),
-      groq:      localStorage.getItem("te_ai_key_groq"),
-    };
-    const key = keyMap[provider];
-    if (!key) throw new Error(`No API key for "${provider}". Go to Settings → AI & API and enter your key.`);
-
-    // data_url is empty in list results — fetch the file on-demand via asset:// URL
-    let dataUrl = screenshot.data_url;
-    if (!dataUrl) {
-      const assetUrl = convertFileSrc(screenshot.filepath);
-      const blob = await fetch(assetUrl).then(r => r.blob());
-      dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    }
-
-    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");
-    const mime   = dataUrl.match(/^data:(image\/\w+);/)?.[1] ?? "image/png";
-
-    if (provider === "anthropic") {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 2048,
-          messages: [{ role: "user", content: [
-            { type: "image", source: { type: "base64", media_type: mime, data: base64 } },
-            { type: "text", text: prompt },
-          ]}],
-        }),
-      });
-      if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
-      const d = await res.json();
-      return d.content[0].text as string;
-    } else if (provider === "openai") {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${key}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          max_tokens: 2048,
-          messages: [{ role: "user", content: [
-            { type: "image_url", image_url: { url: dataUrl } },
-            { type: "text", text: prompt },
-          ]}],
-        }),
-      });
-      if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
-      const d = await res.json();
-      return d.choices[0].message.content as string;
-    } else {
-      // Groq — OpenAI-compatible, vision via llama-4-scout
-      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${key}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "meta-llama/llama-4-scout-17b-16e-instruct",
-          max_tokens: 2048,
-          messages: [{ role: "user", content: [
-            { type: "image_url", image_url: { url: dataUrl } },
-            { type: "text", text: prompt },
-          ]}],
-        }),
-      });
-      if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
-      const d = await res.json();
-      return d.choices[0].message.content as string;
-    }
-  }
 
   async function handleSmartBlur() {
     if (blurActive) { setBlurActive(false); setBlurBoxes([]); return; }
@@ -794,9 +740,12 @@ function ScreenshotPreview({ screenshot, onClose, onMoveToPanel, onAnnotate, onO
   async function handleExtractPDF() {
     setPdfLoading(true); setAiError(null); setPdfMsg(null);
     try {
-      const text = await callVision(
-        `Extract ALL visible text from this screenshot. Preserve structure and layout using plain text. Include all text: UI labels, code, content, numbers, everything visible. Return only the extracted text.`
-      );
+      // Native macOS Vision OCR — fully local, no API key needed
+      const { invoke } = await import("@tauri-apps/api/core");
+      type OcrLine = { text: string; y: number; h: number };
+      const ocrLines: OcrLine[] = await invoke("ocr_image", { filepath: screenshot.filepath });
+      const text = ocrLines.map(l => l.text).join("\n");
+      if (!text.trim()) throw new Error("No text found in this screenshot.");
       const { jsPDF } = await import("jspdf");
       const doc = new jsPDF();
       doc.setFontSize(11);
@@ -902,10 +851,10 @@ function ScreenshotPreview({ screenshot, onClose, onMoveToPanel, onAnnotate, onO
 
           {/* AI actions */}
           <div style={{ borderTop:"1px solid rgba(255,255,255,0.20)", paddingTop:12, marginBottom:14 }}>
-            <div style={{ fontSize:10, fontWeight:600, color:"var(--gallery-text-3)", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:8 }}>AI</div>
+            <div style={{ fontSize:10, fontWeight:600, color:"var(--gallery-text-3)", textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:8 }}>AI{!isPro && " · Pro"}</div>
             <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
               <button
-                onClick={handleSmartBlur}
+                onClick={isPro ? handleSmartBlur : () => { void goUpgrade(); }}
                 disabled={blurLoading}
                 style={{
                   ...previewActionStyle(blurActive),
@@ -919,17 +868,17 @@ function ScreenshotPreview({ screenshot, onClose, onMoveToPanel, onAnnotate, onO
                   ? <><i className="ri-loader-4-line" style={{ fontSize:14, animation:"spin 1s linear infinite", lineHeight:1 }} /> Scanning…</>
                   : blurActive
                     ? <><i className="ri-eye-off-fill" style={{ fontSize:14, color:"#ef4444", WebkitTextFillColor:"#ef4444", lineHeight:1 }} /> Remove blur</>
-                    : <><i className="ri-shield-fill" style={{ fontSize:14, lineHeight:1 }} /> Smart Blur</>
+                    : <><i className={isPro ? "ri-shield-fill" : "ri-lock-fill"} style={{ fontSize:14, lineHeight:1 }} /> Smart Blur</>
                 }
               </button>
 
               <button
-                onClick={handleExtractPDF}
+                onClick={isPro ? handleExtractPDF : () => { void goUpgrade(); }}
                 disabled={pdfLoading}
                 style={{ ...previewActionStyle(false), opacity: pdfLoading ? 0.7 : 1, justifyContent:"flex-start", gap:7, paddingLeft:12 }}>
                 {pdfLoading
                   ? <><i className="ri-loader-4-line" style={{ fontSize:14, animation:"spin 1s linear infinite", lineHeight:1 }} /> Extracting…</>
-                  : <><i className="ri-file-text-fill" style={{ fontSize:14, lineHeight:1 }} /> Extract to PDF</>
+                  : <><i className={isPro ? "ri-file-text-fill" : "ri-lock-fill"} style={{ fontSize:14, lineHeight:1 }} /> Extract to PDF</>
                 }
               </button>
             </div>
@@ -1235,61 +1184,21 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────────
-type AiProvider = "anthropic" | "openai" | "groq";
-
 function SettingsTab() {
   const [notifications, setNotifications] = useState(true);
   const [autoSave, setAutoSave]           = useState(false);
   const [launchAtLogin, setLaunchAtLogin] = useState(true);
   const [autoDismiss, setAutoDismiss]     = useState(() => localStorage.getItem("te_autoDismiss") !== "0");
-  const [dismissTimer, setDismissTimer]   = useState(() => Number(localStorage.getItem("te_dismissTimer") ?? 30));
+  const [dismissTimer, setDismissTimer]   = useState(() => Number(localStorage.getItem("te_dismissTimer") ?? 10));
   const [isPro, setIsPro]                 = useState(false);
-
-  const [aiProvider, setAiProvider] = useState<AiProvider>(
-    () => (localStorage.getItem("te_ai_provider") as AiProvider) ?? "anthropic"
-  );
-  const [anthropicKey, setAnthropicKey] = useState(() => localStorage.getItem("te_ai_key_anthropic") ?? "");
-  const [openaiKey, setOpenaiKey]       = useState(() => localStorage.getItem("te_ai_key_openai") ?? "");
-  const [groqKey, setGroqKey]           = useState(() => localStorage.getItem("te_ai_key_groq") ?? "");
-  const [showKey, setShowKey]           = useState(false);
-  const [aiSaveStatus, setAiSaveStatus] = useState<"idle"|"saved"|"error">("idle");
-  const aiSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function saveAiKey() {
-    try {
-      localStorage.setItem("te_ai_provider", aiProvider);
-      localStorage.setItem("te_ai_key_anthropic", anthropicKey);
-      localStorage.setItem("te_ai_key_openai", openaiKey);
-      localStorage.setItem("te_ai_key_groq", groqKey);
-      setAiSaveStatus("saved");
-    } catch {
-      setAiSaveStatus("error");
-    }
-    if (aiSaveTimer.current) clearTimeout(aiSaveTimer.current);
-    aiSaveTimer.current = setTimeout(() => setAiSaveStatus("idle"), 2500);
-  }
-
-  const currentKey = aiProvider === "anthropic" ? anthropicKey : aiProvider === "openai" ? openaiKey : groqKey;
-  const setCurrentKey = aiProvider === "anthropic" ? setAnthropicKey : aiProvider === "openai" ? setOpenaiKey : setGroqKey;
 
   useEffect(() => {
     import("../lib/tauri").then(m => m.getIsPro()).then(setIsPro).catch(() => {});
   }, []);
   useEffect(() => { localStorage.setItem("te_autoDismiss", autoDismiss ? "1" : "0"); }, [autoDismiss]);
   useEffect(() => { localStorage.setItem("te_dismissTimer", String(dismissTimer)); }, [dismissTimer]);
-  useEffect(() => { localStorage.setItem("te_ai_provider", aiProvider); }, [aiProvider]);
-  useEffect(() => { if (anthropicKey) localStorage.setItem("te_ai_key_anthropic", anthropicKey); }, [anthropicKey]);
-  useEffect(() => { if (openaiKey)    localStorage.setItem("te_ai_key_openai",    openaiKey);    }, [openaiKey]);
-  useEffect(() => { if (groqKey)      localStorage.setItem("te_ai_key_groq",      groqKey);      }, [groqKey]);
 
   const timerOptions = [10, 15, 30, 60, 120];
-
-  const AI_PROVIDERS = [
-    { id:"anthropic" as AiProvider, label:"Anthropic", icon:"ri-sparkling-2-fill", gradient:"linear-gradient(135deg,#d97757,#f59e0b)", hint:"console.anthropic.com", placeholder:"sk-ant-…" },
-    { id:"openai"    as AiProvider, label:"OpenAI",    icon:"ri-openai-fill",       gradient:"linear-gradient(135deg,#4b5563,#111827)", hint:"platform.openai.com",   placeholder:"sk-…" },
-    { id:"groq"      as AiProvider, label:"Groq",      icon:"ri-flashlight-fill",   gradient:"linear-gradient(135deg,#f97316,#ef4444)", hint:"console.groq.com",     placeholder:"gsk_…" },
-  ];
-  const activeProvider = AI_PROVIDERS.find(p => p.id === aiProvider)!;
 
   return (
     <div style={{ padding:"20px 20px 28px", maxWidth:520, margin:"0 auto" }}>
@@ -1363,25 +1272,32 @@ function SettingsTab() {
             </div>
             <div>
               <div style={{ fontSize:13, fontWeight:500, color:"#1c1c1e" }}>Auto-dismiss</div>
-              <div style={{ fontSize:11.5, color:"#9ca3af" }}>Hide panel after inactivity</div>
+              <div style={{ fontSize:11.5, color:"#9ca3af" }}>{isPro ? "Hide panel after inactivity" : "Hides after 10s — custom timing is Pro"}</div>
             </div>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             {autoDismiss && (
               <div style={{ display:"flex", gap:4 }}>
-                {timerOptions.map(sec => (
-                  <button key={sec} onClick={() => setDismissTimer(sec)} style={{
-                    height:24, padding:"0 8px", borderRadius:6, cursor:"pointer",
-                    fontFamily:"inherit", fontSize:11, fontWeight:600,
-                    background: dismissTimer === sec ? "#ffffff" : "#f4f4f5",
-                    color: dismissTimer === sec ? "#1c1c1e" : "#6b7280",
-                    border: dismissTimer === sec ? "none" : "1px solid rgba(0,0,0,0.08)",
-                    transition:"background 120ms",
-                  }}>{sec >= 60 ? `${sec/60}m` : `${sec}s`}</button>
-                ))}
+                {timerOptions.map(sec => {
+                  const selected = isPro ? dismissTimer === sec : sec === 10;
+                  return (
+                    <button key={sec} onClick={() => { if (!isPro) { void goUpgrade(); return; } setDismissTimer(sec); }} style={{
+                      height:24, padding:"0 8px", borderRadius:6, cursor:"pointer",
+                      fontFamily:"inherit", fontSize:11, fontWeight:600,
+                      background: selected ? "#ffffff" : "#f4f4f5",
+                      color: selected ? "#1c1c1e" : "#6b7280",
+                      border: selected ? "none" : "1px solid rgba(0,0,0,0.08)",
+                      opacity: !isPro && sec !== 10 ? 0.45 : 1,
+                      transition:"background 120ms",
+                    }}>{sec >= 60 ? `${sec/60}m` : `${sec}s`}</button>
+                  );
+                })}
               </div>
             )}
-            <div onClick={() => setAutoDismiss(v => !v)} style={{
+            {!isPro && (
+              <Ri icon="ri-lock-fill" gradient="linear-gradient(135deg,#9ca3af,#6b7280)" size={12} />
+            )}
+            <div onClick={() => { if (!isPro) { void goUpgrade(); return; } setAutoDismiss(v => !v); }} style={{
               width:36, height:20, borderRadius:999, cursor:"pointer", flexShrink:0,
               background: autoDismiss ? "rgba(255,255,255,0.54)" : "#e4e4e7",
               position:"relative", transition:"background 200ms",
@@ -1394,66 +1310,6 @@ function SettingsTab() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* ── AI & API ── */}
-      <SectionLabel>AI &amp; API</SectionLabel>
-      <div className="settings-card" style={{ marginBottom:16, padding:"14px 14px" }}>
-        {/* Provider pills */}
-        <div style={{ display:"flex", gap:5, marginBottom:12 }}>
-          {AI_PROVIDERS.map(p => {
-            const active = aiProvider === p.id;
-            return (
-              <button key={p.id} onClick={() => { setAiProvider(p.id); setShowKey(false); }} style={{
-                flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-                height:32, borderRadius:8, cursor:"pointer", fontFamily:"inherit", fontSize:12, fontWeight:500,
-                border: active ? "1.5px solid rgba(255,255,255,0.62)" : "1px solid rgba(0,0,0,0.08)",
-                background: active ? "rgba(255,255,255,0.42)" : "#f9f9f9",
-                color: active ? "#1c1c1e" : "#6b7280", transition:"all 120ms",
-              }}>
-                <Ri icon={p.icon} gradient={active ? "linear-gradient(135deg,#ffffff,#d1d5db)" : p.gradient} size={13} />
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
-        {/* Key row */}
-        <div style={{ display:"flex", gap:6 }}>
-          <div style={{ flex:1, position:"relative" }}>
-            <input
-              type={showKey ? "text" : "password"}
-              value={currentKey}
-              onChange={e => setCurrentKey(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") saveAiKey(); }}
-              placeholder={activeProvider.placeholder}
-              style={{
-                width:"100%", height:34, borderRadius:8,
-                border:"1px solid rgba(0,0,0,0.12)",
-                padding:"0 34px 0 10px", fontSize:12,
-                fontFamily: currentKey ? "'SF Mono', monospace" : "inherit",
-                outline:"none", background:"rgba(255,255,255,0.8)",
-                color:"#1c1c1e", boxSizing:"border-box",
-                letterSpacing: currentKey && !showKey ? "0.12em" : "normal",
-              }}
-            />
-            <button onClick={() => setShowKey(v => !v)} style={{
-              position:"absolute", right:7, top:"50%", transform:"translateY(-50%)",
-              background:"none", border:"none", cursor:"pointer", padding:2, lineHeight:1,
-            }}>
-              <i className={showKey ? "ri-eye-off-line" : "ri-eye-line"}
-                style={{ fontSize:14, color:"#9ca3af", WebkitTextFillColor:"#9ca3af" }} />
-            </button>
-          </div>
-          <button onClick={saveAiKey} style={{
-            height:34, padding:"0 14px", borderRadius:8, flexShrink:0,
-            background: aiSaveStatus === "saved" ? "#10b981" : "#1c1c1e",
-            border:"none", color:"white", fontSize:12, fontWeight:500,
-            cursor:"pointer", fontFamily:"inherit", transition:"background 200ms", whiteSpace:"nowrap",
-          }}>{aiSaveStatus === "saved" ? "Saved ✓" : "Save"}</button>
-        </div>
-        <p style={{ fontSize:11, color:"#9ca3af", margin:"7px 0 0", lineHeight:1.4 }}>
-          <span style={{ color:"var(--gallery-text-1)" }}>{activeProvider.hint}</span> — stored locally only
-        </p>
       </div>
 
       {/* ── Shortcuts ── */}
@@ -1520,13 +1376,21 @@ function Onboarding({ onDone }: { onDone: ()=>void }) {
   const steps: { title: string; subtitle: string; custom: React.ReactNode; nextLabel?: string }[] = [
     {
       title: "Welcome to TooEasy",
-      subtitle: "Capture your screen and paste directly into Claude, ChatGPT, or Figma — in one keystroke.",
+      subtitle: "Capture your screen and paste directly into Claude, ChatGPT, or Figma — in one keystroke. No dragging, no file dialogs.",
       custom: (
-        <div style={{ display:"flex", justifyContent:"center", gap:16, marginTop:8 }}>
-          {["ri-sparkling-2-fill","ri-openai-fill","ri-figma-fill"].map((icon,i) => (
-            <div key={i} style={{ width:44, height:44, borderRadius:12, background:"#f3f4f6",
-              display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <i className={icon} style={{ fontSize:22, color:"#6b7280" }} />
+        <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:14, marginTop:12 }}>
+          {[
+            { logo: claudeLogoUrl,  name: "Claude" },
+            { logo: chatgptLogoUrl, name: "ChatGPT" },
+            { logo: figmaLogoUrl,   name: "Figma" },
+          ].map(app => (
+            <div key={app.name} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+              <div style={{ width:48, height:48, borderRadius:13, background:"#fff",
+                border:"1px solid #ececf0", boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
+                display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <img src={app.logo} alt={app.name} style={{ width:26, height:26, objectFit:"contain" }} />
+              </div>
+              <span style={{ fontSize:11, fontWeight:500, color:"#9ca3af" }}>{app.name}</span>
             </div>
           ))}
         </div>
@@ -1564,7 +1428,7 @@ function Onboarding({ onDone }: { onDone: ()=>void }) {
     },
     {
       title: "Two ways to capture",
-      subtitle: "Use whichever shortcut fits your flow.",
+      subtitle: "Either way, the TooEasy panel slides in at the right of your screen with your capture ready to send.",
       custom: (
         <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:4 }}>
           {[
@@ -1595,20 +1459,28 @@ function Onboarding({ onDone }: { onDone: ()=>void }) {
       ),
     },
     {
-      title: "You're all set!",
-      subtitle: "Take a screenshot, watch the panel appear, and paste anywhere with one click.",
-      nextLabel: "Open TooEasy",
+      title: "Where everything lives",
+      subtitle: "TooEasy stays out of your way until you need it.",
+      nextLabel: "Start capturing",
       custom: (
-        <div style={{ display:"flex", flexDirection:"column", gap:10, marginTop:8 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:8, marginTop:8 }}>
           {[
-            { icon:"ri-screenshot-fill", label:"Take a screenshot" },
-            { icon:"ri-checkbox-multiple-fill", label:"Select & bundle shots" },
-            { icon:"ri-send-plane-fill", label:"Paste into any app" },
+            { icon:"ri-camera-lens-fill", label:"Menu bar icon", desc:"Always in your menu bar (top-right of your screen). Click it to open the capture panel." },
+            { icon:"ri-layout-right-line", label:"Floating panel", desc:"Slides in automatically after every screenshot. Select shots, then click Claude, ChatGPT, or Figma to paste." },
+            { icon:"ri-gallery-fill", label:"Gallery", desc:"All saved screenshots. Open it any time with ⌘G, from File → Open Gallery, or the panel's Gallery button." },
+            { icon:"ri-bookmark-fill", label:"Save", desc:"The panel's Save button stores selected shots in your gallery for later." },
           ].map(row => (
-            <div key={row.label} style={{ display:"flex", alignItems:"center", gap:12,
-              background:"#f9f9fb", borderRadius:12, padding:"10px 14px" }}>
-              <i className={row.icon} style={{ fontSize:18, color:"#6366f1" }} />
-              <span style={{ fontSize:13, fontWeight:500, color:"#1c1c1e" }}>{row.label}</span>
+            <div key={row.label} style={{ display:"flex", alignItems:"flex-start", gap:12,
+              background:"#f9f9fb", borderRadius:12, padding:"11px 14px" }}>
+              <div style={{ width:30, height:30, borderRadius:8, flexShrink:0,
+                background:"linear-gradient(135deg,#6366f1,#8b5cf6)",
+                display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <i className={row.icon} style={{ fontSize:15, color:"#fff", WebkitTextFillColor:"#fff" }} />
+              </div>
+              <div>
+                <div style={{ fontSize:13, fontWeight:600, color:"#1c1c1e", marginBottom:1 }}>{row.label}</div>
+                <div style={{ fontSize:11.5, color:"#6b7280", lineHeight:1.5 }}>{row.desc}</div>
+              </div>
             </div>
           ))}
         </div>
@@ -1624,14 +1496,19 @@ function Onboarding({ onDone }: { onDone: ()=>void }) {
       display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:32 }}>
       <div style={{ width:400 }}>
         {/* Logo */}
-        <div style={{ textAlign:"center", marginBottom:24 }}>
-          <div style={{ width:56, height:56, borderRadius:16, margin:"0 auto 10px",
-            background:"linear-gradient(135deg,#6366f1,#8b5cf6)",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            boxShadow:"0 6px 24px rgba(99,102,241,0.40)" }}>
-            <i className="ri-camera-fill" style={{ fontSize:26, color:"white", WebkitTextFillColor:"white" }} />
-          </div>
-          <div style={{ fontSize:13, fontWeight:600, color:"#9ca3af", letterSpacing:"0.06em", textTransform:"uppercase" }}>TooEasy</div>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", marginBottom:24 }}>
+          <img src={tooeasyIconUrl} alt="" style={{ width:56, height:56, marginBottom:10,
+            filter:"drop-shadow(0 6px 18px rgba(99,102,241,0.35))" }} />
+          <div
+            aria-label="TooEasy"
+            role="img"
+            style={{
+              height:22, width:96,
+              background:"#1c1c1e",
+              mask:`url(${tooeasyWordmarkUrl}) center / contain no-repeat`,
+              WebkitMask:`url(${tooeasyWordmarkUrl}) center / contain no-repeat`,
+            }}
+          />
         </div>
 
         {/* Card */}

@@ -29,7 +29,6 @@ const PANEL_WIDTH = 320;
 const PANEL_EMPTY_HEIGHT = 458;
 const PANEL_BASE_HEIGHT = 476;
 const PANEL_ROW_HEIGHT = 80;
-const PANEL_STATUS_HEIGHT = 56;
 const PANEL_TRANSITION_MS = 220;
 const COLS = 3;
 const FREE_LIMIT = 6;
@@ -79,9 +78,10 @@ export default function FloatingPanel({ event }: Props) {
   const sourcesRef    = useRef(new Map<string, string>());
 
   function resetDismissTimer() {
-    const autoDismiss = localStorage.getItem("te_autoDismiss") !== "0";
+    // Free tier: fixed 10s auto-dismiss. Pro: configurable timing + off switch.
+    const autoDismiss = isProRef.current ? localStorage.getItem("te_autoDismiss") !== "0" : true;
     if (!autoDismiss) return;
-    const secs = Number(localStorage.getItem("te_dismissTimer") ?? 30);
+    const secs = isProRef.current ? Number(localStorage.getItem("te_dismissTimer") ?? 10) : 10;
     if (dismissRef.current) clearTimeout(dismissRef.current);
     dismissRef.current = setTimeout(() => { hidePanel().catch(() => {}); }, secs * 1000);
   }
@@ -90,7 +90,10 @@ export default function FloatingPanel({ event }: Props) {
     getSessionScreenshots().then(s => {
       setShots(s); setSelected(new Set(s.map((_,i) => i)));
     });
-    getIsPro().then(v => { setIsPro(v); isProRef.current = v; }).catch(() => {});
+    const loadPro = () => getIsPro().then(v => { setIsPro(v); isProRef.current = v; resetDismissTimer(); }).catch(() => {});
+    loadPro();
+    // Re-check when the panel regains focus — catches activation done in the gallery
+    window.addEventListener("focus", loadPro);
     getLastActiveApp().then(setActiveApp).catch(() => {});
     const appTimer = setInterval(() => {
       getLastActiveApp().then(app => {
@@ -111,6 +114,7 @@ export default function FloatingPanel({ event }: Props) {
     return () => {
       clearInterval(appTimer);
       if (dismissRef.current) clearTimeout(dismissRef.current);
+      window.removeEventListener("focus", loadPro);
       unlistenCap?.();
     };
   }, []);
@@ -157,10 +161,12 @@ export default function FloatingPanel({ event }: Props) {
       })
       .catch(() => {});
 
-    // Auto-scan new capture for sensitive data
-    scanForSensitive(dataUrl).then(isSensitive => {
-      if (isSensitive) setSensitiveShots(prev => new Set([...prev, dataUrl]));
-    });
+    // Auto-scan new capture for sensitive data — Pro feature
+    if (isProRef.current) {
+      scanForSensitive(dataUrl).then(isSensitive => {
+        if (isSensitive) setSensitiveShots(prev => new Set([...prev, dataUrl]));
+      });
+    }
 
     getLastActiveApp().then(app => {
       setActiveApp(app);
@@ -208,9 +214,10 @@ export default function FloatingPanel({ event }: Props) {
   // the last slot into a "+N" tile.
   const visibleShots = shots;
   const visibleRows = Math.max(1, Math.ceil(Math.max(visibleShots.length, 1) / COLS));
+  // Status renders as a floating overlay, so it doesn't affect panel height
   const panelHeight = shots.length === 0
     ? PANEL_EMPTY_HEIGHT
-    : PANEL_BASE_HEIGHT + (visibleRows - 1) * PANEL_ROW_HEIGHT + (status ? PANEL_STATUS_HEIGHT : 0);
+    : PANEL_BASE_HEIGHT + (visibleRows - 1) * PANEL_ROW_HEIGHT;
   const [visualPanelHeight, setVisualPanelHeight] = useState(PANEL_EMPTY_HEIGHT);
 
   useEffect(() => {
@@ -633,27 +640,36 @@ export default function FloatingPanel({ event }: Props) {
           </p>
         </div>
 
-        {/* Status toast */}
+        {/* Status pop-up — floats above the panel content, never clipped */}
         {status && (
           <div style={{
-            margin:"8px 20px 20px", padding:"10px 12px",
-            background: status.ok ? "rgba(220,252,231,0.50)" : "rgba(254,226,226,0.52)",
-            border:`1px solid ${status.ok ? "rgba(34,197,94,0.28)" : "rgba(239,68,68,0.28)"}`,
-            borderRadius:13, fontSize:12,
+            position:"absolute", left:14, right:14, bottom:14, zIndex:60,
+            padding:"12px 14px",
+            background: status.ok ? "rgba(236,253,243,0.97)" : "rgba(254,242,242,0.97)",
+            border:`1px solid ${status.ok ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`,
+            borderRadius:14, fontSize:12,
             color: status.ok ? "#15803d" : "#dc2626",
-            boxShadow:"inset 0 1px 0 rgba(255,255,255,0.38)",
-            display:"flex", alignItems:"center", justifyContent:"center", gap:6,
-            minHeight:40,
-            lineHeight:1.35,
+            boxShadow:"0 12px 32px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.60)",
+            display:"flex", flexDirection:"column", alignItems:"center", gap:8,
+            lineHeight:1.45,
             textAlign:"center",
+            animation:"fade-up 180ms ease both",
           }}>
-            <span style={{ minWidth:0, overflowWrap:"anywhere" }}>{status.msg}</span>
+            <div style={{ display:"flex", alignItems:"flex-start", gap:7, width:"100%", justifyContent:"center" }}>
+              <i className={status.ok ? "ri-checkbox-circle-fill" : "ri-error-warning-fill"}
+                style={{ fontSize:14, flexShrink:0, marginTop:1, color:"inherit", WebkitTextFillColor:status.ok ? "#15803d" : "#dc2626", lineHeight:1 }} />
+              <span style={{ minWidth:0, overflowWrap:"anywhere" }}>{status.msg}</span>
+              <button onClick={() => setStatus(null)} title="Dismiss"
+                style={{ background:"none", border:"none", cursor:"pointer", padding:0, flexShrink:0, lineHeight:1, marginTop:1 }}>
+                <i className="ri-close-line" style={{ fontSize:14, color:"inherit", WebkitTextFillColor:status.ok ? "#15803d" : "#dc2626" }} />
+              </button>
+            </div>
             {!status.ok && !isPro && status.msg.includes("upgrade") && (
               <button
                 onClick={() => { openUrl(PURCHASE_URL).catch(() => {}); }}
                 style={{
-                  background:"rgba(239,68,68,0.18)", border:"1px solid rgba(239,68,68,0.35)",
-                  borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600,
+                  background:"rgba(239,68,68,0.14)", border:"1px solid rgba(239,68,68,0.35)",
+                  borderRadius:7, padding:"4px 12px", fontSize:11, fontWeight:600,
                   color:"#dc2626", cursor:"pointer", fontFamily:"inherit", flexShrink:0,
                 }}
               >Upgrade</button>
