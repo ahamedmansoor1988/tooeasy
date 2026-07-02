@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   editScreenshot,
   getLastActiveApp,
@@ -37,6 +38,10 @@ function Ri({ icon, gradient, size = 16, style }: { icon: string; gradient: stri
 type Filter = "all" | "today" | "week" | "month" | "favourites";
 type View = "gallery" | "settings" | "profile";
 type SortMode = "newest" | "oldest" | "source";
+
+// On macOS the gallery window uses the native overlay title bar (real traffic
+// lights), so the custom controls are only rendered on other platforms.
+const isMac = navigator.userAgent.includes("Mac");
 
 function isToday(d: string) {
   return d.startsWith(new Date().toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" }));
@@ -133,6 +138,7 @@ export default function GalleryPage() {
   );
   const [displayName, setDisplayName] = useState(() => localStorage.getItem("te_display_name") ?? "MANS");
   const [avatarColor, setAvatarColor] = useState(() => localStorage.getItem("te_avatar_color") ?? "#64748b");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   function toggleFav(filepath: string) {
     setFavs(prev => {
@@ -219,9 +225,9 @@ export default function GalleryPage() {
             void getCurrentWindow().startDragging().catch(() => {});
           }
         }}
-        style={{ height:56, display:"flex", alignItems:"center", padding:"0 20px", gap:12, flexShrink:0,
+        style={{ height:56, display:"flex", alignItems:"center", padding: isMac ? "0 20px 0 104px" : "0 20px", gap:12, flexShrink:0,
           WebkitAppRegion:"drag" } as React.CSSProperties}>
-        <WindowControls />
+        {!isMac && <WindowControls />}
         <div
           aria-label="TooEasy"
           role="img"
@@ -235,13 +241,44 @@ export default function GalleryPage() {
           }}
         />
         <div style={{ flex:1 }} data-tauri-drag-region />
-        <div style={{ display:"flex", alignItems:"center", gap:6, WebkitAppRegion:"no-drag" } as React.CSSProperties}>
-          <button style={tbIconBtn} title="Notifications">
-            <i className="ri-notification-3-line" style={{ fontSize:17, color:"var(--gallery-control-text)", WebkitTextFillColor:"var(--gallery-control-text)", lineHeight:1 }} />
-          </button>
-          <button style={tbIconBtn} title="More options">
+        <div style={{ position:"relative", display:"flex", alignItems:"center", gap:6, WebkitAppRegion:"no-drag" } as React.CSSProperties}>
+          <button style={tbIconBtn} title="More options" onClick={() => setMenuOpen(o => !o)}>
             <i className="ri-more-fill" style={{ fontSize:17, color:"var(--gallery-control-text)", WebkitTextFillColor:"var(--gallery-control-text)", lineHeight:1 }} />
           </button>
+          {menuOpen && (
+            <>
+              <div style={{ position:"fixed", inset:0, zIndex:400 }} onClick={() => setMenuOpen(false)} />
+              <div style={{
+                position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:401,
+                minWidth:190, padding:5, borderRadius:12,
+                background:"var(--gallery-menu-bg, rgba(255,255,255,0.92))",
+                border:"1px solid rgba(0,0,0,0.10)",
+                boxShadow:"0 12px 40px rgba(0,0,0,0.22)",
+                backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
+              }}>
+                {([
+                  { label:"Show Panel",     icon:"ri-layout-right-line",  run: () => { void showPanel().catch(() => {}); } },
+                  { label:"Settings",       icon:"ri-settings-3-line",    run: () => setView("settings") },
+                  { label:"Support",        icon:"ri-mail-line",          run: () => { void openUrl("mailto:ahamedmansoor1988@gmail.com").catch(() => {}); } },
+                  { label:"Quit TooEasy",   icon:"ri-logout-box-line",    run: () => { void invoke("quit_app").catch(() => {}); } },
+                ] as { label:string; icon:string; run:()=>void }[]).map(item => (
+                  <button key={item.label}
+                    onClick={() => { setMenuOpen(false); item.run(); }}
+                    style={{
+                      display:"flex", alignItems:"center", gap:10, width:"100%",
+                      padding:"8px 10px", borderRadius:8, border:"none",
+                      background:"transparent", cursor:"pointer", textAlign:"left",
+                      fontSize:13, color:"var(--gallery-text-1)",
+                    }}
+                    onMouseOver={e => (e.currentTarget.style.background = "rgba(0,0,0,0.06)")}
+                    onMouseOut={e => (e.currentTarget.style.background = "transparent")}>
+                    <i className={item.icon} style={{ fontSize:15, color:"var(--gallery-control-text)", WebkitTextFillColor:"var(--gallery-control-text)", lineHeight:1 }} />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -1125,7 +1162,7 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
         <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom: isPro ? 0 : 16, paddingBottom: isPro ? 0 : 16, borderBottom: isPro ? "none" : "1px solid #f4f4f5" }}>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:14, fontWeight:600, color:"#1c1c1e" }}>{isPro ? "TooEasy Pro" : "TooEasy Free"}</div>
-            <div style={{ fontSize:12, color:"#9ca3af", marginTop:2 }}>{isPro ? "12 captures per session · unlimited gallery" : "3 captures per session"}</div>
+            <div style={{ fontSize:12, color:"#9ca3af", marginTop:2 }}>{isPro ? "20 captures per session · unlimited gallery" : "6 captures per session"}</div>
           </div>
           {isPro ? (
             <span style={{ fontSize:12, fontWeight:600, color:"#16a34a",
@@ -1265,7 +1302,7 @@ function SettingsTab() {
           fontSize:15, fontWeight:700, color:"white" }}>T</div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontSize:13, fontWeight:600, color:"#1c1c1e" }}>TooEasy {isPro ? "Pro" : "Free"}</div>
-          <div style={{ fontSize:11.5, color:"#9ca3af" }}>{isPro ? "Unlimited captures · Full gallery" : "3 captures per session"}</div>
+          <div style={{ fontSize:11.5, color:"#9ca3af" }}>{isPro ? "20 captures per session · Full gallery" : "6 captures per session"}</div>
         </div>
         {isPro
           ? <span style={{ fontSize:11, fontWeight:700, color:"#16a34a", background:"#dcfce7", border:"1px solid #bbf7d0", padding:"3px 10px", borderRadius:999 }}>Pro</span>

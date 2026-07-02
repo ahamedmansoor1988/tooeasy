@@ -1,0 +1,25 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "gallery",
+        "title": "TooEasy",
+        "url": "index.html",
+        "width": 940,
+        "height": 640,
+        "center": true,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 20, "y": 22 },
+        "transparent": true,
+        "resizable": true,
+        "visible": false,
+        "windowEffects": {
+          "effects": ["popover"],
+          "state": "active"
+        }
+      }
+    ]
+  }
+}

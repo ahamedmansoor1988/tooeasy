@@ -42,13 +42,32 @@ fn send_cmd_v_to_bundle(bundle_id: &str) -> Result<(), String> {
             let script = format!(
                 r#"tell application "System Events" to tell process "{name}" to keystroke "v" using command down"#
             );
-            Command::new("osascript")
+            let output = Command::new("osascript")
                 .args(["-e", &script])
-                .status()
+                .output()
                 .map_err(|e| e.to_string())?;
-            Ok(())
+            if output.status.success() {
+                Ok(())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let _ = std::fs::write("/tmp/tooeasy_paste_error.log", stderr.as_bytes());
+                Err(friendly_paste_error(&stderr))
+            }
         }
         None => send_cmd_v(),
+    }
+}
+
+// Map a raw osascript error to a message telling the user which permission to fix.
+// Error -1743: not authorized to send Apple events (Automation permission).
+// "assistive access": Accessibility permission.
+fn friendly_paste_error(stderr: &str) -> String {
+    if stderr.contains("-1743") || stderr.contains("Not authorized") {
+        "Could not paste. Enable System Events under System Settings → Privacy & Security → Automation → TooEasy.".to_string()
+    } else if stderr.contains("assistive access") {
+        "Could not paste. Grant TooEasy Accessibility permission in System Settings → Privacy & Security.".to_string()
+    } else {
+        format!("Could not paste: {}", stderr.trim())
     }
 }
 
@@ -232,14 +251,16 @@ fn send_escape() -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 fn send_cmd_v() -> Result<(), String> {
-    let status = Command::new("osascript")
+    let output = Command::new("osascript")
         .args(["-e", "tell application \"System Events\" to keystroke \"v\" using command down"])
-        .status()
+        .output()
         .map_err(|e| e.to_string())?;
-    if status.success() {
+    if output.status.success() {
         Ok(())
     } else {
-        Err("Could not paste. macOS may need Accessibility permission for TooEasy.".to_string())
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let _ = std::fs::write("/tmp/tooeasy_paste_error.log", stderr.as_bytes());
+        Err(friendly_paste_error(&stderr))
     }
 }
 

@@ -92,12 +92,12 @@ const PANEL_HEIGHT: f64 = 458.0;
 const PANEL_MIN_HEIGHT: f64 = PANEL_HEIGHT;
 const PANEL_FILLED_BASE_HEIGHT: f64 = 476.0;
 const PANEL_THUMBNAIL_ROW_HEIGHT: f64 = 80.0;
-const PANEL_MAX_VISIBLE_SHOTS: usize = 12; // = PRO_LIMIT (defined below)
+const PANEL_MAX_VISIBLE_SHOTS: usize = 20; // = PRO_LIMIT (defined below)
 const GALLERY_WIDTH: f64 = 940.0;
 const GALLERY_HEIGHT: f64 = 640.0;
 
-pub const FREE_LIMIT: usize  = 3;
-pub const PRO_LIMIT: usize   = 12;
+pub const FREE_LIMIT: usize  = 6;
+pub const PRO_LIMIT: usize   = 20;
 
 pub struct AppState {
     pub last_active_app: Mutex<ActiveApp>,
@@ -130,6 +130,11 @@ fn save_screenshot(
 #[tauri::command]
 fn list_screenshots() -> Result<Vec<file_manager::ScreenshotItem>, String> {
     file_manager::list_screenshots()
+}
+
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -398,6 +403,8 @@ fn show_gallery(app: AppHandle) {
         let (x, y) = gallery_position(&app);
         let _ = gallery.set_size(LogicalSize::new(GALLERY_WIDTH, GALLERY_HEIGHT));
         let _ = gallery.set_position(LogicalPosition::new(x, y));
+        // macOS keeps native decorations (overlay title bar with traffic lights)
+        #[cfg(not(target_os = "macos"))]
         let _ = gallery.set_decorations(false);
         let _ = gallery.set_resizable(true);
         #[cfg(target_os = "macos")]
@@ -405,7 +412,6 @@ fn show_gallery(app: AppHandle) {
             EffectsBuilder::new()
                 .effect(Effect::Popover)
                 .state(EffectState::Active)
-                .radius(30.0)
                 .build(),
         );
         #[cfg(target_os = "windows")]
@@ -531,19 +537,25 @@ fn create_gallery_window(app: &AppHandle) {
     .title("TooEasy")
     .inner_size(GALLERY_WIDTH, GALLERY_HEIGHT)
     .position(x, y)
-    .decorations(false)
     .resizable(true)
     .transparent(true)
-    .visible(true)
-    .shadow(false);
+    .visible(true);
+    // macOS: native title bar overlaid on our content — real traffic lights,
+    // hidden title text. The webview titlebar row leaves room for the lights.
     #[cfg(target_os = "macos")]
-    let gallery_builder = gallery_builder.effects(
-        EffectsBuilder::new()
-            .effect(Effect::Popover)
-            .state(EffectState::Active)
-            .radius(30.0)
-            .build(),
-    );
+    let gallery_builder = gallery_builder
+        .decorations(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(LogicalPosition::new(20.0, 22.0))
+        .effects(
+            EffectsBuilder::new()
+                .effect(Effect::Popover)
+                .state(EffectState::Active)
+                .build(),
+        );
+    #[cfg(not(target_os = "macos"))]
+    let gallery_builder = gallery_builder.decorations(false).shadow(false);
     #[cfg(target_os = "windows")]
     let gallery_builder = gallery_builder.effects(
         EffectsBuilder::new()
@@ -626,13 +638,21 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // ── App menu bar (File + Edit + Help) ──────────────────────────
+            // ── App menu bar (TooEasy + File + Edit + Help) ────────────────
+            let app_menu = {
+                let hide_i = PredefinedMenuItem::hide(app, Some("Hide TooEasy"))?;
+                let sep    = PredefinedMenuItem::separator(app)?;
+                let quit_i = PredefinedMenuItem::quit(app, Some("Quit TooEasy"))?;
+                Submenu::with_id_and_items(app, "app", "TooEasy", true, &[&hide_i, &sep, &quit_i])?
+            };
             let file_menu = {
                 let gallery_i = MenuItem::with_id(app, "mb_gallery", "Open Gallery", true, Some("cmd+g"))?;
                 let panel_i   = MenuItem::with_id(app, "mb_panel",   "Show Panel",   true, Some("cmd+p"))?;
                 let sep       = PredefinedMenuItem::separator(app)?;
                 let close_i   = PredefinedMenuItem::close_window(app, Some("Close Window"))?;
-                Submenu::with_id_and_items(app, "file", "File", true, &[&gallery_i, &panel_i, &sep, &close_i])?
+                let sep2      = PredefinedMenuItem::separator(app)?;
+                let quit_i    = MenuItem::with_id(app, "mb_quit", "Quit TooEasy", true, Some("cmd+q"))?;
+                Submenu::with_id_and_items(app, "file", "File", true, &[&gallery_i, &panel_i, &sep, &close_i, &sep2, &quit_i])?
             };
             let edit_menu = {
                 let undo       = PredefinedMenuItem::undo(app, None)?;
@@ -649,11 +669,12 @@ pub fn run() {
                 let support_i = MenuItem::with_id(app, "mb_support", "Support", true, None::<&str>)?;
                 Submenu::with_id_and_items(app, "help", "Help", true, &[&support_i])?
             };
-            let menu_bar = Menu::with_items(app, &[&file_menu, &edit_menu, &help_menu])?;
+            let menu_bar = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &help_menu])?;
             app.set_menu(menu_bar)?;
             app.on_menu_event(|app, event| match event.id().as_ref() {
                 "mb_gallery" => show_gallery(app.clone()),
                 "mb_panel"   => show_panel(app.clone()),
+                "mb_quit"    => app.exit(0),
                 "mb_support" => {
                     #[cfg(target_os = "macos")]
                     let _ = std::process::Command::new("open").arg("mailto:ahamedmansoor1988@gmail.com").spawn();
@@ -703,6 +724,9 @@ pub fn run() {
 
             clipboard_watcher::start(app_handle);
 
+            // Open the gallery on every launch (first run also shows onboarding).
+            show_gallery(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -734,7 +758,18 @@ pub fn run() {
             ocr_image,
             ocr_data_url,
             open_system_settings,
+            quit_app,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // Double-clicking the app in Applications (or the Dock) while it's
+            // already running re-opens the gallery instead of doing nothing.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                show_gallery(app.clone());
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }

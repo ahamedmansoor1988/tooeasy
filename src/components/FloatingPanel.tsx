@@ -32,8 +32,8 @@ const PANEL_ROW_HEIGHT = 80;
 const PANEL_STATUS_HEIGHT = 56;
 const PANEL_TRANSITION_MS = 220;
 const COLS = 3;
-const FREE_LIMIT = 3;
-const PRO_LIMIT = 12;
+const FREE_LIMIT = 6;
+const PRO_LIMIT = 20;
 
 
 interface Props { event: ClipboardImageEvent | null; }
@@ -74,6 +74,9 @@ export default function FloatingPanel({ event }: Props) {
   const resizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nativeHeightRef = useRef(PANEL_EMPTY_HEIGHT);
   const savingRef     = useRef(false);
+  // Source app for each capture, keyed by data URL — recorded at capture time
+  // so saving later still attributes the screenshot to the right app.
+  const sourcesRef    = useRef(new Map<string, string>());
 
   function resetDismissTimer() {
     const autoDismiss = localStorage.getItem("te_autoDismiss") !== "0";
@@ -99,7 +102,7 @@ export default function FloatingPanel({ event }: Props) {
     let unlistenCap: (() => void) | null = null;
     listen("screenshot-cap-reached", () => {
       if (isProRef.current) {
-        showStatus("Supports only 12 images for now", true);
+        showStatus("Supports only 20 images for now", true);
       } else {
         showStatus("Screenshot limit reached — upgrade for more", false);
       }
@@ -120,7 +123,7 @@ export default function FloatingPanel({ event }: Props) {
     // JS-side cap check — catches the case where Rust event arrives before listener is registered
     if (shots.length >= limit && !shots.includes(dataUrl)) {
       if (isPro) {
-        showStatus("Supports only 12 images for now", true);
+        showStatus("Supports only 20 images for now", true);
       } else {
         showStatus("Screenshot limit reached — upgrade for more", false);
       }
@@ -159,7 +162,10 @@ export default function FloatingPanel({ event }: Props) {
       if (isSensitive) setSensitiveShots(prev => new Set([...prev, dataUrl]));
     });
 
-    getLastActiveApp().then(setActiveApp).catch(() => {});
+    getLastActiveApp().then(app => {
+      setActiveApp(app);
+      if (app.name) sourcesRef.current.set(dataUrl, app.name);
+    }).catch(() => {});
     resetDismissTimer();
   }, [event]);
 
@@ -198,7 +204,7 @@ export default function FloatingPanel({ event }: Props) {
   const [activating, setActivating] = useState(false);
   isProRef.current = isPro;
 
-  // Always show real thumbnails, including all 12 Pro images. Do not collapse
+  // Always show real thumbnails, including all 20 Pro images. Do not collapse
   // the last slot into a "+N" tile.
   const visibleShots = shots;
   const visibleRows = Math.max(1, Math.ceil(Math.max(visibleShots.length, 1) / COLS));
@@ -277,7 +283,8 @@ export default function FloatingPanel({ event }: Props) {
     let saved = 0;
     try {
       for (const url of shots) {
-        await saveScreenshot(url, "TooEasy");
+        const source = sourcesRef.current.get(url) || activeApp.name || "Unknown";
+        await saveScreenshot(url, source);
         saved++;
       }
       showStatus(`${saved} image${saved > 1 ? "s" : ""} saved`, true);
@@ -480,7 +487,7 @@ export default function FloatingPanel({ event }: Props) {
                 Unlock TooEasy Pro
               </p>
               <p style={{ margin:"0 0 18px", fontSize:11.5, color:"rgba(255,255,255,0.52)", textAlign:"center", lineHeight:1.4 }}>
-                Up to 12 captures per session
+                Up to 20 captures per session
               </p>
 
               {/* Key input */}

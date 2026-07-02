@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>TooEasy watches your Desktop for new screenshots so they appear in your gallery instantly. Your files never leave your Mac.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>TooEasy needs this to paste screenshots directly into apps like Claude, ChatGPT, and Figma for you.</string>
+	<key>NSPicturesFolderUsageDescription</key>
+	<string>TooEasy looks for screenshots saved in your Pictures folder so they appear in your gallery.</string>
+</dict>
+</plist>
