@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 // Set this to your Gumroad product permalink once you publish.
 // Leave empty during development — any non-empty key will be accepted.
-const GUMROAD_PRODUCT_PERMALINK: &str = "pro";
+const GUMROAD_PRODUCT_PERMALINK: &str = "bkbxux";
 
 fn license_path() -> PathBuf {
     let home = std::env::var_os("HOME")

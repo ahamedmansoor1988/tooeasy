@@ -1170,7 +1170,7 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
               padding:"4px 12px", borderRadius:999 }}>Pro</span>
           ) : (
             <button
-              onClick={() => import("@tauri-apps/plugin-opener").then(m => m.openUrl("https://tooeasy.gumroad.com/l/pro")).catch(() => {})}
+              onClick={() => import("@tauri-apps/plugin-opener").then(m => m.openUrl("https://477706573435.gumroad.com/l/bkbxux")).catch(() => {})}
               style={{ height:32, padding:"0 14px", borderRadius:8,
                 background:"#ffffff", border:"1px solid rgba(255,255,255,0.64)",
                 color:"#1c1c1e", fontSize:13, fontWeight:600, cursor:"pointer" }}>Upgrade →</button>
@@ -1306,7 +1306,7 @@ function SettingsTab() {
         </div>
         {isPro
           ? <span style={{ fontSize:11, fontWeight:700, color:"#16a34a", background:"#dcfce7", border:"1px solid #bbf7d0", padding:"3px 10px", borderRadius:999 }}>Pro</span>
-          : <button onClick={() => import("@tauri-apps/plugin-opener").then(m => m.openUrl("https://tooeasy.gumroad.com/l/pro")).catch(() => {})}
+          : <button onClick={() => import("@tauri-apps/plugin-opener").then(m => m.openUrl("https://477706573435.gumroad.com/l/bkbxux")).catch(() => {})}
               style={{ height:28, padding:"0 12px", borderRadius:7, background:"#ffffff", border:"1px solid rgba(255,255,255,0.64)", color:"#1c1c1e", fontSize:12, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
               Upgrade →
             </button>

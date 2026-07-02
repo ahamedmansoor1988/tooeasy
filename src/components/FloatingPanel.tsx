@@ -12,7 +12,7 @@ import {
 import type { ActiveApp, ClipboardImageEvent } from "../lib/tauri";
 
 // Set to your Gumroad/LemonSqueezy purchase URL once you publish
-const PURCHASE_URL = "https://tooeasy.gumroad.com/l/pro";
+const PURCHASE_URL = "https://477706573435.gumroad.com/l/bkbxux";
 
 function Ri({ icon, gradient, size = 16 }: { icon: string; gradient: string; size?: number }) {
   void gradient;
