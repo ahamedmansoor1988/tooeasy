@@ -370,7 +370,7 @@ export default function GalleryPage() {
 
         {/* Main area */}
         {view === "settings" ? (
-          <div style={{ flex:1, overflowY:"auto" }}>
+          <div className="settings-page-white" style={{ flex:1, overflowY:"auto", background:"#ffffff" }}>
             <SettingsTab />
           </div>
         ) : view === "profile" ? (
@@ -1295,19 +1295,24 @@ function SettingsTab() {
     <div style={{ padding:"20px 20px 28px", maxWidth:520, margin:"0 auto" }}>
 
       {/* ── Plan banner ── */}
-      <div className="settings-card" style={{ padding:"12px 16px", marginBottom:20, display:"flex", alignItems:"center", gap:12 }}>
-        <div style={{ width:36, height:36, borderRadius:10, flexShrink:0,
-          background:"rgba(255,255,255,0.44)",
-          display:"flex", alignItems:"center", justifyContent:"center",
-          fontSize:15, fontWeight:700, color:"white" }}>T</div>
+      <div className="settings-card" style={{ padding:"14px 16px", marginBottom:20, display:"flex", alignItems:"center", gap:12 }}>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:13, fontWeight:600, color:"#1c1c1e" }}>TooEasy {isPro ? "Pro" : "Free"}</div>
-          <div style={{ fontSize:11.5, color:"#9ca3af" }}>{isPro ? "20 captures per session · Full gallery" : "6 captures per session"}</div>
+          <div
+            aria-label="TooEasy"
+            role="img"
+            style={{
+              height:20, width:90, marginBottom:5,
+              background:"#1c1c1e",
+              mask:`url(${tooeasyWordmarkUrl}) left center / contain no-repeat`,
+              WebkitMask:`url(${tooeasyWordmarkUrl}) left center / contain no-repeat`,
+            }}
+          />
+          <div style={{ fontSize:11.5, color:"#9ca3af" }}>{isPro ? "Pro · 20 captures per session · Full gallery" : "Free · 6 captures per session"}</div>
         </div>
         {isPro
           ? <span style={{ fontSize:11, fontWeight:700, color:"#16a34a", background:"#dcfce7", border:"1px solid #bbf7d0", padding:"3px 10px", borderRadius:999 }}>Pro</span>
           : <button onClick={() => import("@tauri-apps/plugin-opener").then(m => m.openUrl("https://477706573435.gumroad.com/l/bkbxux")).catch(() => {})}
-              style={{ height:28, padding:"0 12px", borderRadius:7, background:"#ffffff", border:"1px solid rgba(255,255,255,0.64)", color:"#1c1c1e", fontSize:12, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
+              style={{ height:28, padding:"0 12px", borderRadius:7, background:"#1c1c1e", border:"1px solid #1c1c1e", color:"#ffffff", fontSize:12, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
               Upgrade →
             </button>
         }

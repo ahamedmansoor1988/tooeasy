@@ -277,12 +277,13 @@ export default function FloatingPanel({ event }: Props) {
   }
 
   async function handleSave() {
-    if (!shots.length || savingRef.current) return;
+    if (!selUrls.length || savingRef.current) return;
     savingRef.current = true;
     setBusyDest("save");
     let saved = 0;
     try {
-      for (const url of shots) {
+      // Save only the selected screenshots, not the whole session
+      for (const url of selUrls) {
         const source = sourcesRef.current.get(url) || activeApp.name || "Unknown";
         await saveScreenshot(url, source);
         saved++;
