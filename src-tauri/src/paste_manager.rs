@@ -64,7 +64,7 @@ fn send_cmd_v_to_bundle(bundle_id: &str) -> Result<(), String> {
 fn friendly_paste_error(stderr: &str) -> String {
     if stderr.contains("-1743") || stderr.contains("Not authorized") {
         "Could not paste. Enable System Events under System Settings → Privacy & Security → Automation → TooEasy.".to_string()
-    } else if stderr.contains("assistive access") {
+    } else if stderr.contains("assistive access") || stderr.contains("not allowed to send keystrokes") {
         "Could not paste. Grant TooEasy Accessibility permission in System Settings → Privacy & Security.".to_string()
     } else {
         format!("Could not paste: {}", stderr.trim())
