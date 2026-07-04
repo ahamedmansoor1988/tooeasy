@@ -583,6 +583,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations(
@@ -623,6 +627,10 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show_gallery(app.clone()),
+                    "prefs" => {
+                        show_gallery(app.clone());
+                        let _ = app.emit("open-settings", ());
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })

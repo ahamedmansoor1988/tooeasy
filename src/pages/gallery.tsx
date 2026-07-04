@@ -170,9 +170,12 @@ export default function GalleryPage() {
     loadPro();
     let u: (()=>void)|null = null;
     onScreenshotsUpdated(refresh).then(fn => { u = fn; });
+    // Tray menu "Preferences" jumps straight to the Settings view
+    let uSettings: (()=>void)|null = null;
+    import("@tauri-apps/api/event").then(m => m.listen("open-settings", () => setView("settings"))).then(fn => { uSettings = fn; });
     const onFocus = () => { refresh(); loadPro(); };
     window.addEventListener("focus", onFocus);
-    return () => { u?.(); window.removeEventListener("focus", onFocus); };
+    return () => { u?.(); uSettings?.(); window.removeEventListener("focus", onFocus); };
   }, []);
 
   async function handleEdit(fp: string) {
@@ -1185,16 +1188,25 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 function SettingsTab() {
-  const [notifications, setNotifications] = useState(true);
-  const [autoSave, setAutoSave]           = useState(false);
-  const [launchAtLogin, setLaunchAtLogin] = useState(true);
+  const [autoSave, setAutoSave]           = useState(() => localStorage.getItem("te_autoSave") === "1");
+  const [launchAtLogin, setLaunchAtLoginState] = useState(false);
   const [autoDismiss, setAutoDismiss]     = useState(() => localStorage.getItem("te_autoDismiss") !== "0");
   const [dismissTimer, setDismissTimer]   = useState(() => Number(localStorage.getItem("te_dismissTimer") ?? 10));
   const [isPro, setIsPro]                 = useState(false);
 
+  // Launch-at-login is backed by a real macOS launch agent via the autostart plugin
+  function setLaunchAtLogin(on: boolean) {
+    setLaunchAtLoginState(on); // optimistic
+    import("@tauri-apps/plugin-autostart")
+      .then(m => (on ? m.enable() : m.disable()))
+      .catch(() => setLaunchAtLoginState(!on)); // revert if the OS call failed
+  }
+
   useEffect(() => {
     import("../lib/tauri").then(m => m.getIsPro()).then(setIsPro).catch(() => {});
+    import("@tauri-apps/plugin-autostart").then(m => m.isEnabled()).then(setLaunchAtLoginState).catch(() => {});
   }, []);
+  useEffect(() => { localStorage.setItem("te_autoSave", autoSave ? "1" : "0"); }, [autoSave]);
   useEffect(() => { localStorage.setItem("te_autoDismiss", autoDismiss ? "1" : "0"); }, [autoDismiss]);
   useEffect(() => { localStorage.setItem("te_dismissTimer", String(dismissTimer)); }, [dismissTimer]);
 
@@ -1227,13 +1239,12 @@ function SettingsTab() {
         }
       </div>
 
-      {/* ── General — 3-up icon tiles ── */}
+      {/* ── General — icon tiles ── */}
       <SectionLabel>General</SectionLabel>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:16 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
         {([
           { label:"Launch at Login", icon:"ri-restart-fill",      grad:"linear-gradient(135deg,#ffffff,#e5e7eb)", val:launchAtLogin, set:setLaunchAtLogin },
           { label:"Auto-save",       icon:"ri-save-3-fill",        grad:"linear-gradient(135deg,#10b981,#059669)", val:autoSave,       set:setAutoSave },
-          { label:"Notifications",   icon:"ri-notification-2-fill",grad:"linear-gradient(135deg,#f59e0b,#f97316)", val:notifications,  set:setNotifications },
         ] as { label:string; icon:string; grad:string; val:boolean; set:(v:boolean)=>void }[]).map(tile => (
           <div key={tile.label} className="settings-card" onClick={() => tile.set(!tile.val)}
             style={{ padding:"14px 14px 12px", cursor:"pointer", userSelect:"none" }}>

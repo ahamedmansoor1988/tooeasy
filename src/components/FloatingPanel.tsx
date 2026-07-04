@@ -76,6 +76,8 @@ export default function FloatingPanel({ event }: Props) {
   // Source app for each capture, keyed by data URL — recorded at capture time
   // so saving later still attributes the screenshot to the right app.
   const sourcesRef    = useRef(new Map<string, string>());
+  // Data URLs already saved to the gallery (auto-save or manual) — prevents duplicates
+  const savedUrlsRef  = useRef(new Set<string>());
 
   function resetDismissTimer() {
     // Free tier: fixed 10s auto-dismiss. Pro: configurable timing + off switch.
@@ -171,6 +173,11 @@ export default function FloatingPanel({ event }: Props) {
     getLastActiveApp().then(app => {
       setActiveApp(app);
       if (app.name) sourcesRef.current.set(dataUrl, app.name);
+      // Auto-save (Settings → General): every capture goes straight to the gallery
+      if (localStorage.getItem("te_autoSave") === "1" && !savedUrlsRef.current.has(dataUrl)) {
+        savedUrlsRef.current.add(dataUrl);
+        saveScreenshot(dataUrl, app.name || "Unknown").catch(() => savedUrlsRef.current.delete(dataUrl));
+      }
     }).catch(() => {});
     resetDismissTimer();
   }, [event]);
@@ -289,13 +296,15 @@ export default function FloatingPanel({ event }: Props) {
     setBusyDest("save");
     let saved = 0;
     try {
-      // Save only the selected screenshots, not the whole session
+      // Save only the selected screenshots; skip ones auto-save already stored
       for (const url of selUrls) {
+        if (savedUrlsRef.current.has(url)) continue;
         const source = sourcesRef.current.get(url) || activeApp.name || "Unknown";
         await saveScreenshot(url, source);
+        savedUrlsRef.current.add(url);
         saved++;
       }
-      showStatus(`${saved} image${saved > 1 ? "s" : ""} saved`, true);
+      showStatus(saved > 0 ? `${saved} image${saved > 1 ? "s" : ""} saved` : "Already saved", true);
     } catch { showStatus("Save failed.", false); }
     finally { savingRef.current = false; setBusyDest(null); }
   }
