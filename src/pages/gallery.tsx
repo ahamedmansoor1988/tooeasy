@@ -1243,22 +1243,22 @@ function SettingsTab() {
       <SectionLabel>General</SectionLabel>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
         {([
-          { label:"Launch at Login", icon:"ri-restart-fill",      grad:"linear-gradient(135deg,#ffffff,#e5e7eb)", val:launchAtLogin, set:setLaunchAtLogin },
-          { label:"Auto-save",       icon:"ri-save-3-fill",        grad:"linear-gradient(135deg,#10b981,#059669)", val:autoSave,       set:setAutoSave },
-        ] as { label:string; icon:string; grad:string; val:boolean; set:(v:boolean)=>void }[]).map(tile => (
+          { label:"Launch at Login", icon:"ri-restart-fill", val:launchAtLogin, set:setLaunchAtLogin },
+          { label:"Auto-save",       icon:"ri-save-3-fill",  val:autoSave,       set:setAutoSave },
+        ] as { label:string; icon:string; val:boolean; set:(v:boolean)=>void }[]).map(tile => (
           <div key={tile.label} className="settings-card" onClick={() => tile.set(!tile.val)}
             style={{ padding:"14px 14px 12px", cursor:"pointer", userSelect:"none" }}>
             <div style={{ width:32, height:32, borderRadius:9, marginBottom:10,
-              background: tile.val ? tile.grad : "#f4f4f5",
+              background: tile.val ? "#16a34a" : "#e4e4e7",
               display:"flex", alignItems:"center", justifyContent:"center",
               transition:"background 200ms",
             }}>
-              <Ri icon={tile.icon} gradient={tile.val ? "linear-gradient(135deg,#fff,rgba(255,255,255,0.85))" : "linear-gradient(135deg,#9ca3af,#6b7280)"} size={16} />
+              <Ri icon={tile.icon} gradient={tile.val ? "linear-gradient(135deg,#fff,#fff)" : "linear-gradient(135deg,#9ca3af,#6b7280)"} size={16} />
             </div>
             <div style={{ fontSize:12, fontWeight:600, color:"#1c1c1e", marginBottom:6, lineHeight:1.2 }}>{tile.label}</div>
             {/* Mini toggle */}
             <div style={{ width:32, height:18, borderRadius:999,
-              background: tile.val ? "rgba(255,255,255,0.54)" : "#e4e4e7",
+              background: tile.val ? "#16a34a" : "#d4d4d8",
               position:"relative", transition:"background 200ms",
             }}>
               <div style={{ position:"absolute", top:2, left: tile.val ? 16 : 2,
@@ -1277,9 +1277,9 @@ function SettingsTab() {
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 14px", gap:12 }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ width:28, height:28, borderRadius:7, flexShrink:0,
-              background: autoDismiss ? "rgba(255,255,255,0.54)" : "#f4f4f5",
+              background: autoDismiss ? "#16a34a" : "#e4e4e7",
               display:"flex", alignItems:"center", justifyContent:"center", transition:"background 200ms" }}>
-              <Ri icon="ri-timer-flash-fill" gradient={autoDismiss ? "linear-gradient(135deg,#fff,rgba(255,255,255,0.85))" : "linear-gradient(135deg,#9ca3af,#6b7280)"} size={14} />
+              <Ri icon="ri-timer-flash-fill" gradient={autoDismiss ? "linear-gradient(135deg,#fff,#fff)" : "linear-gradient(135deg,#9ca3af,#6b7280)"} size={14} />
             </div>
             <div>
               <div style={{ fontSize:13, fontWeight:500, color:"#1c1c1e" }}>Auto-dismiss</div>
@@ -1295,8 +1295,8 @@ function SettingsTab() {
                     <button key={sec} onClick={() => { if (!isPro) { void goUpgrade(); return; } setDismissTimer(sec); }} style={{
                       height:24, padding:"0 8px", borderRadius:6, cursor:"pointer",
                       fontFamily:"inherit", fontSize:11, fontWeight:600,
-                      background: selected ? "#ffffff" : "#f4f4f5",
-                      color: selected ? "#1c1c1e" : "#6b7280",
+                      background: selected ? "#16a34a" : "#f4f4f5",
+                      color: selected ? "#ffffff" : "#6b7280",
                       border: selected ? "none" : "1px solid rgba(0,0,0,0.08)",
                       opacity: !isPro && sec !== 10 ? 0.45 : 1,
                       transition:"background 120ms",
@@ -1310,7 +1310,7 @@ function SettingsTab() {
             )}
             <div onClick={() => { if (!isPro) { void goUpgrade(); return; } setAutoDismiss(v => !v); }} style={{
               width:36, height:20, borderRadius:999, cursor:"pointer", flexShrink:0,
-              background: autoDismiss ? "rgba(255,255,255,0.54)" : "#e4e4e7",
+              background: autoDismiss ? "#16a34a" : "#d4d4d8",
               position:"relative", transition:"background 200ms",
             }}>
               <div style={{ position:"absolute", top:3, left: autoDismiss ? 19 : 3,
