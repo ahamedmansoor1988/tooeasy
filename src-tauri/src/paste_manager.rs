@@ -1,8 +1,25 @@
 use base64::Engine;
 use std::process::Command;
 use std::time::Duration;
+use tauri::{AppHandle, Manager};
 
-pub fn paste_to_app(data_url: &str, bundle_id: &str) -> Result<(), String> {
+// Push the clipboard-watcher suppression window forward by a fixed margin
+// from *now*. Called repeatedly while a paste operation is in flight, so the
+// window is self-correcting: it doesn't matter whether our per-image timing
+// estimate is exactly right, because as long as this keeps getting called,
+// the watcher stays suppressed. Only after the last call does it expire,
+// `margin_ms` after that call — a safe trailing buffer either way.
+fn touch_suppression(app: &AppHandle, margin_ms: u64) {
+    if let Some(state) = app.try_state::<crate::AppState>() {
+        *state.suppress_watcher_until.lock().unwrap() =
+            Some(std::time::Instant::now() + Duration::from_millis(margin_ms));
+    }
+}
+
+const SUPPRESSION_MARGIN_MS: u64 = 3000;
+
+pub fn paste_to_app(app: &AppHandle, data_url: &str, bundle_id: &str) -> Result<(), String> {
+    touch_suppression(app, SUPPRESSION_MARGIN_MS);
     write_png_to_pasteboard(data_url)?;
 
     if !bundle_id.is_empty() {
@@ -14,6 +31,7 @@ pub fn paste_to_app(data_url: &str, bundle_id: &str) -> Result<(), String> {
         focus_text_input_if_needed(bundle_id);
     }
 
+    touch_suppression(app, SUPPRESSION_MARGIN_MS);
     // Send Cmd+V directly to the target process so it is never intercepted by
     // the TooEasy panel (which is always_on_top and may hold keyboard focus).
     send_cmd_v_to_bundle(bundle_id)
@@ -148,13 +166,15 @@ fn is_ai_app(bundle_id: &str) -> bool {
     ai_prefixes.iter().any(|p| bundle_id.starts_with(p))
 }
 
+
 // Paste multiple images:
 //   - AI apps (Claude, ChatGPT) → sequential Cmd+V so each image is separate
 //   - Design tools (Figma, etc.) → stitch side-by-side, paste as one image
-pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<(), String> {
+pub fn paste_images_sequential(app: &AppHandle, data_urls: &[String], bundle_id: &str) -> Result<(), String> {
     if data_urls.is_empty() {
         return Ok(());
     }
+    touch_suppression(app, SUPPRESSION_MARGIN_MS);
 
     if !bundle_id.is_empty() {
         let already_running = is_process_running(bundle_id);
@@ -165,11 +185,16 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
 
     let is_figma = bundle_id.contains("figma");
     // Electron-based AI apps (Claude, ChatGPT) are slower to actually read the
-    // pasteboard after the keystroke than native apps. If we overwrite the
-    // clipboard with the next image before that read completes, the app skips
-    // one image and pastes another twice. Give these apps more breathing room.
+    // pasteboard after the keystroke than native apps, and how slow varies with
+    // image size and machine load — there's no OS signal that confirms the
+    // target app actually consumed the clipboard before we move on. If we
+    // overwrite it with the next image too soon, the app skips one image and
+    // pastes another twice. These delays are a deliberately generous margin,
+    // not a precise measurement — multi-image paste is not latency-sensitive,
+    // so favor reliability over speed here.
     let is_ai = is_ai_app(bundle_id);
-    let post_paste_delay = if is_ai { 900 } else { 500 };
+    let settle_delay = if is_ai { 300 } else { 150 };
+    let post_paste_delay = if is_ai { 1500 } else { 500 };
 
     // For Figma: get window bounds once so we can click the X position field
     let figma_x_field: Option<(i32, i32)> = if is_figma {
@@ -179,8 +204,12 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
     };
 
     for (i, data_url) in data_urls.iter().enumerate() {
+        // Refresh on every iteration — the watcher stays suppressed for as
+        // long as this loop keeps running, regardless of how long each step
+        // actually takes.
+        touch_suppression(app, SUPPRESSION_MARGIN_MS);
         write_png_to_pasteboard(data_url)?;
-        std::thread::sleep(Duration::from_millis(if is_ai { 220 } else { 150 }));
+        std::thread::sleep(Duration::from_millis(settle_delay));
         send_cmd_v_to_bundle(bundle_id)?;
         std::thread::sleep(Duration::from_millis(post_paste_delay));
 
@@ -196,6 +225,12 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
             send_escape()?;
             std::thread::sleep(Duration::from_millis(200));
         }
+    }
+
+    // Extra buffer so the LAST paste is fully processed before we return and
+    // the caller (e.g. clearing the "busy" state) proceeds.
+    if is_ai {
+        std::thread::sleep(Duration::from_millis(400));
     }
 
     Ok(())
@@ -295,9 +330,9 @@ pub fn copy_image(data_url: &str) -> Result<(), String> {
     write_png_to_pasteboard(data_url)
 }
 
-pub fn paste_file_to_app(filepath: &str, bundle_id: &str) -> Result<(), String> {
+pub fn paste_file_to_app(app: &AppHandle, filepath: &str, bundle_id: &str) -> Result<(), String> {
     let data_url = crate::file_manager::read_screenshot_data_url(filepath)?;
-    paste_to_app(&data_url, bundle_id)
+    paste_to_app(app, &data_url, bundle_id)
 }
 
 pub fn copy_image_file(filepath: &str) -> Result<(), String> {

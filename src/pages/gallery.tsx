@@ -1050,8 +1050,8 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
 
   return (
     <div style={{ padding:"28px 28px", maxWidth:520, margin:"0 auto" }}>
-      <h1 style={{ fontSize:20, fontWeight:600, color:"#1c1c1e", marginBottom:4 }}>Profile</h1>
-      <p style={{ fontSize:13, color:"#9ca3af", marginBottom:24 }}>Your identity, plan, and usage.</p>
+      <h1 style={{ fontSize:20, fontWeight:600, color:"#000000", marginBottom:4 }}>Profile</h1>
+      <p style={{ fontSize:13, color:"#4b5563", marginBottom:24 }}>Your identity, plan, and usage.</p>
 
       {/* Identity */}
       <SectionLabel>Identity</SectionLabel>
@@ -1099,14 +1099,14 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
               <button onClick={commitName} style={{ height:36, padding:"0 16px", borderRadius:8,
                 background:"#ffffff", border:"1px solid rgba(255,255,255,0.64)", color:"#1c1c1e", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"inherit" }}>Save</button>
               <button onClick={() => setEditing(false)} style={{ height:36, padding:"0 12px", borderRadius:8,
-                background:"rgba(0,0,0,0.06)", border:"none", color:"#6b7280", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Cancel</button>
+                background:"rgba(0,0,0,0.06)", border:"none", color:"#374151", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Cancel</button>
             </div>
           ) : (
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <span style={{ fontSize:15, fontWeight:600, color:"#1c1c1e" }}>{displayName}</span>
+              <span style={{ fontSize:15, fontWeight:600, color:"#000000" }}>{displayName}</span>
               <button onClick={() => { setDraft(displayName); setEditing(true); }} style={{
                 background:"none", border:"none", cursor:"pointer", padding:0,
-                fontSize:12, color:"#9ca3af", textDecoration:"underline", fontFamily:"inherit",
+                fontSize:12, color:"#4b5563", textDecoration:"underline", fontFamily:"inherit",
               }}>Edit</button>
             </div>
           )}
@@ -1118,12 +1118,12 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
       <div className="settings-card" style={{ padding:"16px 20px", marginBottom:16 }}>
         <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom: isPro ? 0 : 16, paddingBottom: isPro ? 0 : 16, borderBottom: isPro ? "none" : "1px solid #f4f4f5" }}>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:14, fontWeight:600, color:"#1c1c1e" }}>{isPro ? "TooEasy Pro" : "TooEasy Free"}</div>
-            <div style={{ fontSize:12, color:"#9ca3af", marginTop:2 }}>{isPro ? "20 captures per session · unlimited gallery" : "6 captures per session"}</div>
+            <div style={{ fontSize:14, fontWeight:600, color:"#000000" }}>{isPro ? "TooEasy Pro" : "TooEasy Free"}</div>
+            <div style={{ fontSize:12, color:"#4b5563", marginTop:2 }}>{isPro ? "20 captures per session · unlimited gallery" : "6 captures per session"}</div>
           </div>
           {isPro ? (
-            <span style={{ fontSize:12, fontWeight:600, color:"#16a34a",
-              background:"#dcfce7", border:"1px solid #bbf7d0",
+            <span style={{ fontSize:12, fontWeight:700, color:"#ffffff",
+              background:"#15803d", border:"1px solid #166534",
               padding:"4px 12px", borderRadius:999 }}>Pro</span>
           ) : (
             <button
@@ -1168,7 +1168,7 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
               background:"none", border:"none", padding:0, cursor:"pointer",
               fontSize:12, color:"#ef4444", fontFamily:"inherit",
             }}>{deactivating ? "Deactivating…" : "Deactivate license on this Mac"}</button>
-            <p style={{ fontSize:11, color:"#9ca3af", marginTop:4 }}>Frees up this activation so you can use it on another Mac.</p>
+            <p style={{ fontSize:11, color:"#4b5563", marginTop:4 }}>Frees up this activation so you can use it on another Mac.</p>
           </div>
         )}
       </div>
@@ -1182,8 +1182,8 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
           { label:"Favourites", value: favsCount },
         ].map(s => (
           <div key={s.label} className="settings-card" style={{ padding:"14px 16px" }}>
-            <div style={{ fontSize:24, fontWeight:500, color:"#1c1c1e", lineHeight:1 }}>{s.value}</div>
-            <div style={{ fontSize:11, color:"#9ca3af", marginTop:4 }}>{s.label}</div>
+            <div style={{ fontSize:24, fontWeight:500, color:"#000000", lineHeight:1 }}>{s.value}</div>
+            <div style={{ fontSize:11, color:"#4b5563", marginTop:4 }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -1198,6 +1198,7 @@ function SettingsTab() {
   const [autoDismiss, setAutoDismiss]     = useState(() => localStorage.getItem("te_autoDismiss") !== "0");
   const [dismissTimer, setDismissTimer]   = useState(() => Number(localStorage.getItem("te_dismissTimer") ?? 10));
   const [isPro, setIsPro]                 = useState(false);
+  const [appVersion, setAppVersion]       = useState("");
 
   // Launch-at-login is backed by a real macOS launch agent via the autostart plugin
   function setLaunchAtLogin(on: boolean) {
@@ -1210,6 +1211,7 @@ function SettingsTab() {
   useEffect(() => {
     import("../lib/tauri").then(m => m.getIsPro()).then(setIsPro).catch(() => {});
     import("@tauri-apps/plugin-autostart").then(m => m.isEnabled()).then(setLaunchAtLoginState).catch(() => {});
+    import("@tauri-apps/api/app").then(m => m.getVersion()).then(setAppVersion).catch(() => {});
   }, []);
   useEffect(() => { localStorage.setItem("te_autoSave", autoSave ? "1" : "0"); }, [autoSave]);
   useEffect(() => { localStorage.setItem("te_autoDismiss", autoDismiss ? "1" : "0"); }, [autoDismiss]);
@@ -1233,10 +1235,10 @@ function SettingsTab() {
               WebkitMask:`url(${tooeasyWordmarkUrl}) left center / contain no-repeat`,
             }}
           />
-          <div style={{ fontSize:11.5, color:"#9ca3af" }}>{isPro ? "Pro · 20 captures per session · Full gallery" : "Free · 6 captures per session"}</div>
+          <div style={{ fontSize:11.5, color:"#4b5563" }}>{isPro ? "Pro · 20 captures per session · Full gallery" : "Free · 6 captures per session"}</div>
         </div>
         {isPro
-          ? <span style={{ fontSize:11, fontWeight:700, color:"#16a34a", background:"#dcfce7", border:"1px solid #bbf7d0", padding:"3px 10px", borderRadius:999 }}>Pro</span>
+          ? <span style={{ fontSize:11, fontWeight:700, color:"#ffffff", background:"#15803d", border:"1px solid #166534", padding:"3px 10px", borderRadius:999 }}>Pro</span>
           : <button onClick={() => import("@tauri-apps/plugin-opener").then(m => m.openUrl("https://477706573435.gumroad.com/l/bkbxux")).catch(() => {})}
               style={{ height:28, padding:"0 12px", borderRadius:7, background:"#1c1c1e", border:"1px solid #1c1c1e", color:"#ffffff", fontSize:12, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
               Upgrade →
@@ -1288,7 +1290,7 @@ function SettingsTab() {
             </div>
             <div>
               <div style={{ fontSize:13, fontWeight:500, color:"#1c1c1e" }}>Auto-dismiss</div>
-              <div style={{ fontSize:11.5, color:"#9ca3af" }}>{isPro ? "Hide panel after inactivity" : "Hides after 10s — custom timing is Pro"}</div>
+              <div style={{ fontSize:11.5, color:"#4b5563" }}>{isPro ? "Hide panel after inactivity" : "Hides after 10s — custom timing is Pro"}</div>
             </div>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -1301,7 +1303,7 @@ function SettingsTab() {
                       height:24, padding:"0 8px", borderRadius:6, cursor:"pointer",
                       fontFamily:"inherit", fontSize:11, fontWeight:600,
                       background: selected ? "#16a34a" : "#f4f4f5",
-                      color: selected ? "#ffffff" : "#6b7280",
+                      color: selected ? "#ffffff" : "#374151",
                       border: selected ? "none" : "1px solid rgba(0,0,0,0.08)",
                       opacity: !isPro && sec !== 10 ? 0.45 : 1,
                       transition:"background 120ms",
@@ -1340,7 +1342,7 @@ function SettingsTab() {
               background:s.grad, display:"flex", alignItems:"center", justifyContent:"center" }}>
               <Ri icon={s.icon} gradient="" color="#ffffff" size={14} />
             </div>
-            <div style={{ fontSize:11.5, fontWeight:500, color:"#6b7280", marginBottom:5 }}>{s.label}</div>
+            <div style={{ fontSize:11.5, fontWeight:500, color:"#374151", marginBottom:5 }}>{s.label}</div>
             <kbd style={{ display:"inline-block", padding:"2px 7px", borderRadius:5,
               background:"#f4f4f5", border:"1px solid rgba(0,0,0,0.08)",
               fontSize:11, color:"#1c1c1e", fontFamily:"inherit", letterSpacing:"0.02em" }}>{s.key}</kbd>
@@ -1356,21 +1358,21 @@ function SettingsTab() {
           style={{
             height:13,
             width:58,
-            opacity:0.35,
-            background:"var(--gallery-text-1)",
+            opacity:0.45,
+            background:"#000000",
             mask:`url(${tooeasyWordmarkUrl}) center / contain no-repeat`,
             WebkitMask:`url(${tooeasyWordmarkUrl}) center / contain no-repeat`,
           }}
         />
-        <span style={{ fontSize:11, color:"#c4c9d4" }}>·</span>
-        <span style={{ fontSize:11, color:"#c4c9d4" }}>v1.0.0</span>
+        <span style={{ fontSize:11, color:"#6b7280" }}>·</span>
+        <span style={{ fontSize:11, color:"#6b7280" }}>{appVersion ? `v${appVersion}` : ""}</span>
       </div>
     </div>
   );
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize:11, fontWeight:600, color:"#9ca3af", textTransform:"uppercase",
+  return <div style={{ fontSize:11, fontWeight:600, color:"#4b5563", textTransform:"uppercase",
     letterSpacing:"0.06em", marginBottom:6, marginTop:4 }}>{children}</div>;
 }
 

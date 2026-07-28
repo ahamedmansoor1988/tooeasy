@@ -158,8 +158,7 @@ fn edit_screenshot(filepath: String) -> Result<(), String> {
 
 #[tauri::command]
 fn paste_to_app(app: AppHandle, data_url: String, bundle_id: String) -> Result<(), String> {
-    suppress_watcher(&app, 800);
-    paste_manager::paste_to_app(&data_url, &bundle_id)
+    paste_manager::paste_to_app(&app, &data_url, &bundle_id)
 }
 
 #[tauri::command]
@@ -168,8 +167,8 @@ fn copy_image(data_url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn paste_file_to_app(filepath: String, bundle_id: String) -> Result<(), String> {
-    paste_manager::paste_file_to_app(&filepath, &bundle_id)
+fn paste_file_to_app(app: AppHandle, filepath: String, bundle_id: String) -> Result<(), String> {
+    paste_manager::paste_file_to_app(&app, &filepath, &bundle_id)
 }
 
 #[tauri::command]
@@ -263,17 +262,10 @@ fn paste_selected_to_app(app: AppHandle, data_urls: Vec<String>, bundle_id: Stri
     if data_urls.is_empty() {
         return Err("No screenshots selected".into());
     }
-    // Each image takes ~650ms to paste; suppress the clipboard watcher for the full duration
-    let suppress_ms = (data_urls.len() as u64) * 800 + 600;
-    suppress_watcher(&app, suppress_ms);
-    paste_manager::paste_images_sequential(&data_urls, &bundle_id)
-}
-
-fn suppress_watcher(app: &AppHandle, millis: u64) {
-    if let Some(state) = app.try_state::<AppState>() {
-        *state.suppress_watcher_until.lock().unwrap() =
-            Some(std::time::Instant::now() + std::time::Duration::from_millis(millis));
-    }
+    // Watcher suppression is managed inside paste_images_sequential itself —
+    // it re-arms on every image so it can't expire mid-paste regardless of
+    // how long each step actually takes.
+    paste_manager::paste_images_sequential(&app, &data_urls, &bundle_id)
 }
 
 fn panel_position(app: &AppHandle) -> (f64, f64) {
