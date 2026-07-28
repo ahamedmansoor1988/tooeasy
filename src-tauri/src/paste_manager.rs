@@ -164,6 +164,12 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
     }
 
     let is_figma = bundle_id.contains("figma");
+    // Electron-based AI apps (Claude, ChatGPT) are slower to actually read the
+    // pasteboard after the keystroke than native apps. If we overwrite the
+    // clipboard with the next image before that read completes, the app skips
+    // one image and pastes another twice. Give these apps more breathing room.
+    let is_ai = is_ai_app(bundle_id);
+    let post_paste_delay = if is_ai { 900 } else { 500 };
 
     // For Figma: get window bounds once so we can click the X position field
     let figma_x_field: Option<(i32, i32)> = if is_figma {
@@ -174,9 +180,9 @@ pub fn paste_images_sequential(data_urls: &[String], bundle_id: &str) -> Result<
 
     for (i, data_url) in data_urls.iter().enumerate() {
         write_png_to_pasteboard(data_url)?;
-        std::thread::sleep(Duration::from_millis(150));
+        std::thread::sleep(Duration::from_millis(if is_ai { 220 } else { 150 }));
         send_cmd_v_to_bundle(bundle_id)?;
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(post_paste_delay));
 
         if is_figma {
             // Set absolute X position by clicking the X field in Figma's design panel

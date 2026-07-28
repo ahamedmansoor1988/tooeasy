@@ -22,13 +22,18 @@ import chatgptLogoUrl from "../assets/logos/chatgpt.svg";
 import figmaLogoUrl from "../assets/logos/figma.svg";
 import chromeLogoUrl from "../assets/logos/chrome.svg";
 
-function Ri({ icon, gradient, size = 16, style }: { icon: string; gradient: string; size?: number; style?: React.CSSProperties }) {
+// `color`, when given, overrides the theme-adaptive icon color — use it for
+// icons sitting on a fixed-color badge/square (e.g. a solid green toggle tile)
+// where the icon must stay a fixed white/grey regardless of light or dark mode.
+// Without it, icons use var(--gallery-icon) so they adapt with the page theme.
+function Ri({ icon, gradient, size = 16, style, color }: { icon: string; gradient: string; size?: number; style?: React.CSSProperties; color?: string }) {
   void gradient;
+  const c = color ?? "var(--gallery-icon)";
   return (
     <i className={icon} style={{
       fontSize: size,
-      color: "var(--gallery-icon)",
-      WebkitTextFillColor: "var(--gallery-icon)",
+      color: c,
+      WebkitTextFillColor: c,
       lineHeight: 1,
       display: "inline-block",
       ...style,
@@ -399,7 +404,7 @@ export default function GalleryPage() {
             <SettingsTab />
           </div>
         ) : view === "profile" ? (
-          <div style={{ flex:1, overflowY:"auto" }}>
+          <div className="settings-page-white" style={{ flex:1, overflowY:"auto", background:"#ffffff" }}>
             <ProfilePanel
               displayName={displayName}
               avatarColor={avatarColor}
@@ -1253,7 +1258,7 @@ function SettingsTab() {
               display:"flex", alignItems:"center", justifyContent:"center",
               transition:"background 200ms",
             }}>
-              <Ri icon={tile.icon} gradient={tile.val ? "linear-gradient(135deg,#fff,#fff)" : "linear-gradient(135deg,#9ca3af,#6b7280)"} size={16} />
+              <Ri icon={tile.icon} gradient="" color={tile.val ? "#ffffff" : "#6b7280"} size={16} />
             </div>
             <div style={{ fontSize:12, fontWeight:600, color:"#1c1c1e", marginBottom:6, lineHeight:1.2 }}>{tile.label}</div>
             {/* Mini toggle */}
@@ -1279,7 +1284,7 @@ function SettingsTab() {
             <div style={{ width:28, height:28, borderRadius:7, flexShrink:0,
               background: autoDismiss ? "#16a34a" : "#e4e4e7",
               display:"flex", alignItems:"center", justifyContent:"center", transition:"background 200ms" }}>
-              <Ri icon="ri-timer-flash-fill" gradient={autoDismiss ? "linear-gradient(135deg,#fff,#fff)" : "linear-gradient(135deg,#9ca3af,#6b7280)"} size={14} />
+              <Ri icon="ri-timer-flash-fill" gradient="" color={autoDismiss ? "#ffffff" : "#6b7280"} size={14} />
             </div>
             <div>
               <div style={{ fontSize:13, fontWeight:500, color:"#1c1c1e" }}>Auto-dismiss</div>
@@ -1306,7 +1311,7 @@ function SettingsTab() {
               </div>
             )}
             {!isPro && (
-              <Ri icon="ri-lock-fill" gradient="linear-gradient(135deg,#9ca3af,#6b7280)" size={12} />
+              <Ri icon="ri-lock-fill" gradient="" color="#9ca3af" size={12} />
             )}
             <div onClick={() => { if (!isPro) { void goUpgrade(); return; } setAutoDismiss(v => !v); }} style={{
               width:36, height:20, borderRadius:999, cursor:"pointer", flexShrink:0,
@@ -1327,13 +1332,13 @@ function SettingsTab() {
       <SectionLabel>Shortcuts</SectionLabel>
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:20 }}>
         {[
-          { label:"Capture",      key:"⌃⌘⇧4", icon:"ri-screenshot-fill", grad:"linear-gradient(135deg,#ffffff,#d1d5db)" },
+          { label:"Capture",      key:"⌃⌘⇧4", icon:"ri-screenshot-fill", grad:"linear-gradient(135deg,#4b5563,#111827)" },
           { label:"Save to disk", key:"⌘⇧4",  icon:"ri-download-2-fill", grad:"linear-gradient(135deg,#10b981,#059669)" },
         ].map(s => (
           <div key={s.label} className="settings-card" style={{ padding:"12px 14px" }}>
             <div style={{ width:28, height:28, borderRadius:7, marginBottom:8,
               background:s.grad, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <Ri icon={s.icon} gradient="linear-gradient(135deg,#fff,rgba(255,255,255,0.85))" size={14} />
+              <Ri icon={s.icon} gradient="" color="#ffffff" size={14} />
             </div>
             <div style={{ fontSize:11.5, fontWeight:500, color:"#6b7280", marginBottom:5 }}>{s.label}</div>
             <kbd style={{ display:"inline-block", padding:"2px 7px", borderRadius:5,
