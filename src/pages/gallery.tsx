@@ -267,8 +267,8 @@ export default function GalleryPage() {
               <div style={{
                 position:"absolute", top:"calc(100% + 6px)", right:0, zIndex:401,
                 minWidth:190, padding:5, borderRadius:12,
-                background:"var(--gallery-menu-bg, rgba(255,255,255,0.92))",
-                border:"1px solid rgba(0,0,0,0.10)",
+                background:"var(--gallery-menu-bg)",
+                border:"1px solid var(--gallery-menu-border)",
                 boxShadow:"0 12px 40px rgba(0,0,0,0.22)",
                 backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
               }}>
@@ -286,7 +286,7 @@ export default function GalleryPage() {
                       background:"transparent", cursor:"pointer", textAlign:"left",
                       fontSize:13, color:"var(--gallery-text-1)",
                     }}
-                    onMouseOver={e => (e.currentTarget.style.background = "rgba(0,0,0,0.06)")}
+                    onMouseOver={e => (e.currentTarget.style.background = "var(--gallery-menu-hover)")}
                     onMouseOut={e => (e.currentTarget.style.background = "transparent")}>
                     <i className={item.icon} style={{ fontSize:15, color:"var(--gallery-control-text)", WebkitTextFillColor:"var(--gallery-control-text)", lineHeight:1 }} />
                     {item.label}
@@ -400,11 +400,11 @@ export default function GalleryPage() {
 
         {/* Main area */}
         {view === "settings" ? (
-          <div className="settings-page-white" style={{ flex:1, overflowY:"auto", background:"#ffffff" }}>
+          <div style={{ flex:1, overflowY:"auto" }}>
             <SettingsTab />
           </div>
         ) : view === "profile" ? (
-          <div className="settings-page-white" style={{ flex:1, overflowY:"auto", background:"#ffffff" }}>
+          <div style={{ flex:1, overflowY:"auto" }}>
             <ProfilePanel
               displayName={displayName}
               avatarColor={avatarColor}
@@ -1050,8 +1050,8 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
 
   return (
     <div style={{ padding:"28px 28px", maxWidth:520, margin:"0 auto" }}>
-      <h1 style={{ fontSize:20, fontWeight:600, color:"#000000", marginBottom:4 }}>Profile</h1>
-      <p style={{ fontSize:13, color:"#4b5563", marginBottom:24 }}>Your identity, plan, and usage.</p>
+      <h1 style={{ fontSize:20, fontWeight:600, color:"var(--gallery-text-1)", marginBottom:4 }}>Profile</h1>
+      <div style={{ fontSize:13, color:"var(--gallery-text-2)", marginBottom:24 }}>Your identity, plan, and usage.</div>
 
       {/* Identity */}
       <SectionLabel>Identity</SectionLabel>
@@ -1065,7 +1065,7 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
             boxShadow:"0 4px 14px rgba(0,0,0,0.12)",
           }}>{displayName.charAt(0).toUpperCase()}</div>
           <div>
-            <div style={{ fontSize:13, fontWeight:500, color:"#1c1c1e", marginBottom:8 }}>Avatar colour</div>
+            <div style={{ fontSize:13, fontWeight:500, color:"var(--gallery-text-1)", marginBottom:8 }}>Avatar colour</div>
             <div style={{ display:"flex", gap:7 }}>
               {AVATAR_COLORS.map(c => (
                 <button key={c} onClick={() => onColorChange(c)} style={{
@@ -1082,31 +1082,32 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
 
         {/* Display name */}
         <div>
-          <div style={{ fontSize:13, fontWeight:500, color:"#1c1c1e", marginBottom:6 }}>Display name</div>
+          <div style={{ fontSize:13, fontWeight:500, color:"var(--gallery-text-1)", marginBottom:6 }}>Display name</div>
           {editing ? (
             <div style={{ display:"flex", gap:8 }}>
               <input
+                className="settings-input"
                 value={draft}
                 onChange={e => setDraft(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") commitName(); if (e.key === "Escape") setEditing(false); }}
                 autoFocus
                 style={{
-                  flex:1, height:36, borderRadius:8, border:"1px solid rgba(255,255,255,0.54)",
+                  flex:1, height:36, borderRadius:8,
                   padding:"0 12px", fontSize:13, fontFamily:"inherit", outline:"none",
-                  background:"rgba(255,255,255,0.8)", color:"#1c1c1e",
+                  color:"var(--gallery-text-1)",
                 }}
               />
               <button onClick={commitName} style={{ height:36, padding:"0 16px", borderRadius:8,
                 background:"#ffffff", border:"1px solid rgba(255,255,255,0.64)", color:"#1c1c1e", fontSize:13, fontWeight:500, cursor:"pointer", fontFamily:"inherit" }}>Save</button>
               <button onClick={() => setEditing(false)} style={{ height:36, padding:"0 12px", borderRadius:8,
-                background:"rgba(0,0,0,0.06)", border:"none", color:"#374151", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Cancel</button>
+                background:"rgba(255,255,255,0.10)", border:"none", color:"var(--gallery-text-2)", fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Cancel</button>
             </div>
           ) : (
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <span style={{ fontSize:15, fontWeight:600, color:"#000000" }}>{displayName}</span>
+              <div style={{ fontSize:15, fontWeight:600, color:"var(--gallery-text-1)" }}>{displayName}</div>
               <button onClick={() => { setDraft(displayName); setEditing(true); }} style={{
                 background:"none", border:"none", cursor:"pointer", padding:0,
-                fontSize:12, color:"#4b5563", textDecoration:"underline", fontFamily:"inherit",
+                fontSize:12, color:"var(--gallery-text-2)", textDecoration:"underline", fontFamily:"inherit",
               }}>Edit</button>
             </div>
           )}
@@ -1116,15 +1117,15 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
       {/* Plan & License */}
       <SectionLabel>Plan &amp; license</SectionLabel>
       <div className="settings-card" style={{ padding:"16px 20px", marginBottom:16 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom: isPro ? 0 : 16, paddingBottom: isPro ? 0 : 16, borderBottom: isPro ? "none" : "1px solid #f4f4f5" }}>
+        <div className={isPro ? undefined : "settings-divider"} style={{ display:"flex", alignItems:"center", gap:12, marginBottom: isPro ? 0 : 16, paddingBottom: isPro ? 0 : 16, borderBottom: isPro ? "none" : "1px solid" }}>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:14, fontWeight:600, color:"#000000" }}>{isPro ? "TooEasy Pro" : "TooEasy Free"}</div>
-            <div style={{ fontSize:12, color:"#4b5563", marginTop:2 }}>{isPro ? "20 captures per session · unlimited gallery" : "6 captures per session"}</div>
+            <div style={{ fontSize:14, fontWeight:600, color:"var(--gallery-text-1)" }}>{isPro ? "TooEasy Pro" : "TooEasy Free"}</div>
+            <div style={{ fontSize:12, color:"var(--gallery-text-2)", marginTop:2 }}>{isPro ? "20 captures per session · unlimited gallery" : "6 captures per session"}</div>
           </div>
           {isPro ? (
-            <span style={{ fontSize:12, fontWeight:700, color:"#ffffff",
+            <div style={{ fontSize:12, fontWeight:700, color:"#ffffff",
               background:"#15803d", border:"1px solid #166534",
-              padding:"4px 12px", borderRadius:999 }}>Pro</span>
+              padding:"4px 12px", borderRadius:999 }}>Pro</div>
           ) : (
             <button
               onClick={() => import("@tauri-apps/plugin-opener").then(m => m.openUrl("https://477706573435.gumroad.com/l/bkbxux")).catch(() => {})}
@@ -1136,39 +1137,40 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
 
         {!isPro && (
           <div>
-            <div style={{ fontSize:13, fontWeight:500, color:"#1c1c1e", marginBottom:8 }}>Have a license key?</div>
+            <div style={{ fontSize:13, fontWeight:500, color:"var(--gallery-text-1)", marginBottom:8 }}>Have a license key?</div>
             <div style={{ display:"flex", gap:8 }}>
               <input
+                className={licenseError ? undefined : "settings-input"}
                 value={licenseKey}
                 onChange={e => { setLicenseKey(e.target.value); setLicenseError(null); }}
                 onKeyDown={e => { if (e.key === "Enter") handleActivate(); }}
                 placeholder="XXXX-XXXX-XXXX-XXXX"
                 style={{
                   flex:1, height:36, borderRadius:8,
-                  border:`1px solid ${licenseError ? "rgba(239,68,68,0.6)" : "rgba(0,0,0,0.12)"}`,
+                  border: licenseError ? "1px solid rgba(239,68,68,0.6)" : undefined,
                   padding:"0 12px", fontSize:12.5, fontFamily:"'SF Mono', monospace",
-                  outline:"none", background:"rgba(255,255,255,0.8)", color:"#1c1c1e",
+                  outline:"none", color:"var(--gallery-text-1)",
                   letterSpacing:"0.04em",
                 }}
               />
               <button onClick={handleActivate} disabled={activating} style={{
                 height:36, padding:"0 14px", borderRadius:8,
-                background:"#1c1c1e", border:"none", color:"white",
+                background:"#6366f1", border:"none", color:"white",
                 fontSize:13, fontWeight:500, cursor: activating ? "default" : "pointer",
                 opacity: activating ? 0.6 : 1, fontFamily:"inherit", whiteSpace:"nowrap",
               }}>{activating ? "Checking…" : "Activate"}</button>
             </div>
-            {licenseError && <p style={{ fontSize:12, color:"#ef4444", marginTop:6 }}>{licenseError}</p>}
+            {licenseError && <div style={{ fontSize:12, color:"#ef4444", marginTop:6 }}>{licenseError}</div>}
           </div>
         )}
 
         {isPro && (
-          <div style={{ marginTop:14, paddingTop:14, borderTop:"1px solid #f4f4f5" }}>
+          <div className="settings-divider" style={{ marginTop:14, paddingTop:14, borderTop:"1px solid" }}>
             <button onClick={handleDeactivate} disabled={deactivating} style={{
               background:"none", border:"none", padding:0, cursor:"pointer",
               fontSize:12, color:"#ef4444", fontFamily:"inherit",
             }}>{deactivating ? "Deactivating…" : "Deactivate license on this Mac"}</button>
-            <p style={{ fontSize:11, color:"#4b5563", marginTop:4 }}>Frees up this activation so you can use it on another Mac.</p>
+            <div style={{ fontSize:11, color:"var(--gallery-text-3)", marginTop:4 }}>Frees up this activation so you can use it on another Mac.</div>
           </div>
         )}
       </div>
@@ -1182,8 +1184,8 @@ function ProfilePanel({ displayName, avatarColor, totalCount, todayCount, favsCo
           { label:"Favourites", value: favsCount },
         ].map(s => (
           <div key={s.label} className="settings-card" style={{ padding:"14px 16px" }}>
-            <div style={{ fontSize:24, fontWeight:500, color:"#000000", lineHeight:1 }}>{s.value}</div>
-            <div style={{ fontSize:11, color:"#4b5563", marginTop:4 }}>{s.label}</div>
+            <div style={{ fontSize:24, fontWeight:500, color:"var(--gallery-text-1)", lineHeight:1 }}>{s.value}</div>
+            <div style={{ fontSize:11, color:"var(--gallery-text-3)", marginTop:4 }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -1230,17 +1232,17 @@ function SettingsTab() {
             role="img"
             style={{
               height:20, width:90, marginBottom:5,
-              background:"#1c1c1e",
+              background:"var(--gallery-text-1)",
               mask:`url(${tooeasyWordmarkUrl}) left center / contain no-repeat`,
               WebkitMask:`url(${tooeasyWordmarkUrl}) left center / contain no-repeat`,
             }}
           />
-          <div style={{ fontSize:11.5, color:"#4b5563" }}>{isPro ? "Pro · 20 captures per session · Full gallery" : "Free · 6 captures per session"}</div>
+          <div style={{ fontSize:11.5, color:"var(--gallery-text-2)" }}>{isPro ? "Pro · 20 captures per session · Full gallery" : "Free · 6 captures per session"}</div>
         </div>
         {isPro
-          ? <span style={{ fontSize:11, fontWeight:700, color:"#ffffff", background:"#15803d", border:"1px solid #166534", padding:"3px 10px", borderRadius:999 }}>Pro</span>
+          ? <div style={{ fontSize:11, fontWeight:700, color:"#ffffff", background:"#15803d", border:"1px solid #166534", padding:"3px 10px", borderRadius:999 }}>Pro</div>
           : <button onClick={() => import("@tauri-apps/plugin-opener").then(m => m.openUrl("https://477706573435.gumroad.com/l/bkbxux")).catch(() => {})}
-              style={{ height:28, padding:"0 12px", borderRadius:7, background:"#1c1c1e", border:"1px solid #1c1c1e", color:"#ffffff", fontSize:12, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
+              style={{ height:28, padding:"0 12px", borderRadius:7, background:"#6366f1", border:"1px solid #6366f1", color:"#ffffff", fontSize:12, fontWeight:600, cursor:"pointer", flexShrink:0 }}>
               Upgrade →
             </button>
         }
@@ -1256,16 +1258,16 @@ function SettingsTab() {
           <div key={tile.label} className="settings-card" onClick={() => tile.set(!tile.val)}
             style={{ padding:"14px 14px 12px", cursor:"pointer", userSelect:"none" }}>
             <div style={{ width:32, height:32, borderRadius:9, marginBottom:10,
-              background: tile.val ? "#16a34a" : "#e4e4e7",
+              background: tile.val ? "#16a34a" : "rgba(255,255,255,0.10)",
               display:"flex", alignItems:"center", justifyContent:"center",
               transition:"background 200ms",
             }}>
               <Ri icon={tile.icon} gradient="" color={tile.val ? "#ffffff" : "#6b7280"} size={16} />
             </div>
-            <div style={{ fontSize:12, fontWeight:600, color:"#1c1c1e", marginBottom:6, lineHeight:1.2 }}>{tile.label}</div>
+            <div style={{ fontSize:12, fontWeight:600, color:"var(--gallery-text-1)", marginBottom:6, lineHeight:1.2 }}>{tile.label}</div>
             {/* Mini toggle */}
             <div style={{ width:32, height:18, borderRadius:999,
-              background: tile.val ? "#16a34a" : "#d4d4d8",
+              background: tile.val ? "#16a34a" : "rgba(255,255,255,0.16)",
               position:"relative", transition:"background 200ms",
             }}>
               <div style={{ position:"absolute", top:2, left: tile.val ? 16 : 2,
@@ -1284,13 +1286,13 @@ function SettingsTab() {
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 14px", gap:12 }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             <div style={{ width:28, height:28, borderRadius:7, flexShrink:0,
-              background: autoDismiss ? "#16a34a" : "#e4e4e7",
+              background: autoDismiss ? "#16a34a" : "rgba(255,255,255,0.10)",
               display:"flex", alignItems:"center", justifyContent:"center", transition:"background 200ms" }}>
               <Ri icon="ri-timer-flash-fill" gradient="" color={autoDismiss ? "#ffffff" : "#6b7280"} size={14} />
             </div>
             <div>
-              <div style={{ fontSize:13, fontWeight:500, color:"#1c1c1e" }}>Auto-dismiss</div>
-              <div style={{ fontSize:11.5, color:"#4b5563" }}>{isPro ? "Hide panel after inactivity" : "Hides after 10s — custom timing is Pro"}</div>
+              <div style={{ fontSize:13, fontWeight:500, color:"var(--gallery-text-1)" }}>Auto-dismiss</div>
+              <div style={{ fontSize:11.5, color:"var(--gallery-text-2)" }}>{isPro ? "Hide panel after inactivity" : "Hides after 10s — custom timing is Pro"}</div>
             </div>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -1302,9 +1304,9 @@ function SettingsTab() {
                     <button key={sec} onClick={() => { if (!isPro) { void goUpgrade(); return; } setDismissTimer(sec); }} style={{
                       height:24, padding:"0 8px", borderRadius:6, cursor:"pointer",
                       fontFamily:"inherit", fontSize:11, fontWeight:600,
-                      background: selected ? "#16a34a" : "#f4f4f5",
-                      color: selected ? "#ffffff" : "#374151",
-                      border: selected ? "none" : "1px solid rgba(0,0,0,0.08)",
+                      background: selected ? "#16a34a" : "rgba(255,255,255,0.10)",
+                      color: selected ? "#ffffff" : "var(--gallery-text-2)",
+                      border: selected ? "none" : "1px solid rgba(255,255,255,0.20)",
                       opacity: !isPro && sec !== 10 ? 0.45 : 1,
                       transition:"background 120ms",
                     }}>{sec >= 60 ? `${sec/60}m` : `${sec}s`}</button>
@@ -1317,7 +1319,7 @@ function SettingsTab() {
             )}
             <div onClick={() => { if (!isPro) { void goUpgrade(); return; } setAutoDismiss(v => !v); }} style={{
               width:36, height:20, borderRadius:999, cursor:"pointer", flexShrink:0,
-              background: autoDismiss ? "#16a34a" : "#d4d4d8",
+              background: autoDismiss ? "#16a34a" : "rgba(255,255,255,0.16)",
               position:"relative", transition:"background 200ms",
             }}>
               <div style={{ position:"absolute", top:3, left: autoDismiss ? 19 : 3,
@@ -1342,10 +1344,10 @@ function SettingsTab() {
               background:s.grad, display:"flex", alignItems:"center", justifyContent:"center" }}>
               <Ri icon={s.icon} gradient="" color="#ffffff" size={14} />
             </div>
-            <div style={{ fontSize:11.5, fontWeight:500, color:"#374151", marginBottom:5 }}>{s.label}</div>
+            <div style={{ fontSize:11.5, fontWeight:500, color:"var(--gallery-text-2)", marginBottom:5 }}>{s.label}</div>
             <kbd style={{ display:"inline-block", padding:"2px 7px", borderRadius:5,
-              background:"#f4f4f5", border:"1px solid rgba(0,0,0,0.08)",
-              fontSize:11, color:"#1c1c1e", fontFamily:"inherit", letterSpacing:"0.02em" }}>{s.key}</kbd>
+              background:"rgba(255,255,255,0.10)", border:"1px solid rgba(255,255,255,0.20)",
+              fontSize:11, fontFamily:"inherit", letterSpacing:"0.02em" }}>{s.key}</kbd>
           </div>
         ))}
       </div>
@@ -1359,29 +1361,29 @@ function SettingsTab() {
             height:13,
             width:58,
             opacity:0.45,
-            background:"#000000",
+            background:"var(--gallery-text-1)",
             mask:`url(${tooeasyWordmarkUrl}) center / contain no-repeat`,
             WebkitMask:`url(${tooeasyWordmarkUrl}) center / contain no-repeat`,
           }}
         />
-        <span style={{ fontSize:11, color:"#6b7280" }}>·</span>
-        <span style={{ fontSize:11, color:"#6b7280" }}>{appVersion ? `v${appVersion}` : ""}</span>
+        <div style={{ fontSize:11, color:"var(--gallery-text-3)" }}>·</div>
+        <div style={{ fontSize:11, color:"var(--gallery-text-3)" }}>{appVersion ? `v${appVersion}` : ""}</div>
       </div>
     </div>
   );
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize:11, fontWeight:600, color:"#4b5563", textTransform:"uppercase",
+  return <div style={{ fontSize:11, fontWeight:600, color:"var(--gallery-text-3)", textTransform:"uppercase",
     letterSpacing:"0.06em", marginBottom:6, marginTop:4 }}>{children}</div>;
 }
 
 
 function EmptyState({ message }: { message?: string }) {
   return (
-    <div style={{ textAlign:"center", padding:"80px 32px", color:"#9ca3af" }}>
-      <Ri icon="ri-screenshot-fill" gradient="linear-gradient(135deg,#ffffff,#d1d5db)" size={48} style={{ display:"block", marginBottom:12 }} />
-      <div style={{ fontSize:15, fontWeight:600, marginBottom:6, color:"#6b7280" }}>{message ?? "No screenshots yet"}</div>
+    <div style={{ textAlign:"center", padding:"80px 32px", color:"var(--gallery-text-3)" }}>
+      <Ri icon="ri-screenshot-fill" gradient="" size={48} style={{ display:"block", marginBottom:12 }} />
+      <div style={{ fontSize:15, fontWeight:600, marginBottom:6, color:"var(--gallery-text-2)" }}>{message ?? "No screenshots yet"}</div>
       <div style={{ fontSize:13 }}>Press ⌃⌘⇧4 to capture your screen instantly</div>
     </div>
   );

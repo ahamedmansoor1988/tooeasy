@@ -142,6 +142,9 @@ body:has(.liquid-panel-material) #root {
   --gallery-view-inactive: rgba(107, 114, 128, 0.46);
   --gallery-selection-fill: rgba(255, 255, 255, 0.34);
   --gallery-selection-stroke: rgba(255, 255, 255, 0.62);
+  --gallery-menu-bg: rgba(255,255,255,0.92);
+  --gallery-menu-border: rgba(0,0,0,0.10);
+  --gallery-menu-hover: rgba(0,0,0,0.06);
   --border:    rgba(0,0,0,0.07);
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05);
@@ -162,6 +165,9 @@ body:has(.liquid-panel-material) #root {
     --gallery-view-inactive: rgba(203, 213, 225, 0.42);
     --gallery-selection-fill: rgba(255, 255, 255, 0.18);
     --gallery-selection-stroke: rgba(255, 255, 255, 0.42);
+    --gallery-menu-bg: rgba(38,38,42,0.92);
+    --gallery-menu-border: rgba(255,255,255,0.14);
+    --gallery-menu-hover: rgba(255,255,255,0.10);
   }
 }
 
@@ -488,21 +494,43 @@ body:has(.liquid-panel-material) #root {
   -webkit-backdrop-filter: blur(18px) saturate(1.25);
 }
 
-/* Settings & Profile sit on solid, fully opaque white regardless of OS theme
-   or the window's native vibrancy — !important guards against any inherited
-   backdrop-filter/translucency letting the dark vibrancy bleed through. */
+/* This card had no dark-mode variant at all — always the light glass tint
+   above, so once text correctly went light-on-dark it ended up light-on-
+   light-grey (still legible, but not a real dark card). A genuinely dark,
+   subtly-lit glass surface instead of just re-tinting the same recipe. */
+@media (prefers-color-scheme: dark) {
+  .settings-card {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03)),
+      rgba(0,0,0,0.26);
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow:
+      0 10px 28px rgba(0,0,0,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+}
+
+/* Settings & Profile use the same adaptive glass chrome as the rest of the
+   gallery (via .settings-card above + var(--gallery-text-*) on text), so
+   they go properly dark/light with the OS instead of forcing one theme. */
 .settings-page-white {
-  background: #ffffff !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
   isolation: isolate;
 }
-.settings-page-white .settings-card {
-  background: #fafafa !important;
-  border: 1px solid #e8e8ec;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+
+/* Theme-adaptive input surface for text fields inside Settings/Profile —
+   a translucent white overlay reads as "raised" on both a light and a dark
+   glass card, unlike a fixed opaque white box which only works in light mode. */
+.settings-input {
+  background: rgba(255,255,255,0.16);
+  border: 1px solid rgba(255,255,255,0.30);
+}
+.settings-input::placeholder {
+  color: var(--gallery-text-3);
+}
+
+/* Theme-adaptive hairline divider/border for cards and separators. */
+.settings-divider {
+  border-color: rgba(255,255,255,0.20);
 }
 
 /* ── Titlebar ──────────────────────────────────────────────────────────── */
